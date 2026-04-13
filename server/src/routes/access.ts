@@ -1788,6 +1788,57 @@ async function resolveActorEmail(db: Db, req: Request): Promise<string | null> {
   return user?.email ?? null;
 }
 
+async function resolveAcceptedInviteJoinRequest(
+  db: Db,
+  req: Request,
+  invite: typeof invites.$inferSelect | null,
+) {
+  if (!invite?.acceptedAt) return null;
+
+  const directJoinRequest = await db
+    .select({
+      requestType: joinRequests.requestType,
+      status: joinRequests.status,
+      requestingUserId: joinRequests.requestingUserId,
+      requestEmailSnapshot: joinRequests.requestEmailSnapshot,
+    })
+    .from(joinRequests)
+    .where(eq(joinRequests.inviteId, invite.id))
+    .then((rows) => rows[0] ?? null);
+  if (directJoinRequest) return directJoinRequest;
+
+  if (!invite.companyId) return null;
+
+  const actorRequestingUserId = isLocalImplicit(req)
+    ? "local-board"
+    : req.actor.userId ?? null;
+  const actorEmail = await resolveActorEmail(db, req);
+  if (!actorRequestingUserId && !actorEmail) return null;
+
+  return findReusableHumanJoinRequest(
+    await db
+      .select({
+        id: joinRequests.id,
+        requestType: joinRequests.requestType,
+        status: joinRequests.status,
+        requestingUserId: joinRequests.requestingUserId,
+        requestEmailSnapshot: joinRequests.requestEmailSnapshot,
+      })
+      .from(joinRequests)
+      .where(
+        and(
+          eq(joinRequests.companyId, invite.companyId),
+          eq(joinRequests.requestType, "human"),
+        ),
+      )
+      .orderBy(desc(joinRequests.createdAt)),
+    {
+      requestingUserId: actorRequestingUserId,
+      requestEmailSnapshot: actorEmail,
+    },
+  );
+}
+
 function grantsFromDefaults(
   defaultsPayload: Record<string, unknown> | null | undefined,
   key: "human" | "agent"
@@ -2529,16 +2580,7 @@ export function accessRoutes(
       .from(invites)
       .where(eq(invites.tokenHash, hashToken(token)))
       .then((rows) => rows[0] ?? null);
-    const inviteJoinRequest = invite?.acceptedAt
-      ? await db
-          .select({
-            requestType: joinRequests.requestType,
-            status: joinRequests.status,
-          })
-          .from(joinRequests)
-          .where(eq(joinRequests.inviteId, invite.id))
-          .then((rows) => rows[0] ?? null)
-      : null;
+    const inviteJoinRequest = await resolveAcceptedInviteJoinRequest(db, req, invite);
     if (
       !invite ||
       invite.revokedAt ||
@@ -2570,7 +2612,13 @@ export function accessRoutes(
       .from(invites)
       .where(eq(invites.tokenHash, hashToken(token)))
       .then((rows) => rows[0] ?? null);
-    if (!invite || invite.revokedAt || invite.acceptedAt || inviteExpired(invite)) {
+    const inviteJoinRequest = await resolveAcceptedInviteJoinRequest(db, req, invite);
+    if (
+      !invite ||
+      invite.revokedAt ||
+      inviteExpired(invite) ||
+      (invite.acceptedAt && !inviteJoinRequest)
+    ) {
       throw notFound("Invite not found");
     }
 

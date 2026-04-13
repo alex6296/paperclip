@@ -15,11 +15,17 @@ import { errorHandler } from "../middleware/index.js";
 
 function createSelectChain(rows: unknown[]) {
   const query = {
+    then(resolve: (value: unknown[]) => unknown) {
+      return Promise.resolve(rows).then(resolve);
+    },
     leftJoin() {
       return query;
     },
+    orderBy() {
+      return query;
+    },
     where() {
-      return Promise.resolve(rows);
+      return query;
     },
   };
   return {
@@ -40,10 +46,13 @@ function createDbStub(...selectResponses: unknown[][]) {
   };
 }
 
-function createApp(db: Record<string, unknown>) {
+function createApp(
+  db: Record<string, unknown>,
+  actor: Record<string, unknown> = { type: "anon" },
+) {
   const app = express();
   app.use((req, _res, next) => {
-    (req as any).actor = { type: "anon" };
+    (req as any).actor = actor;
     next();
   });
   app.use(
@@ -201,5 +210,61 @@ describe("GET /invites/:token", () => {
     expect(res.body.joinRequestStatus).toBe("pending_approval");
     expect(res.body.joinRequestType).toBe("human");
     expect(res.body.companyName).toBe("Acme Robotics");
+  });
+
+  it("falls back to a reusable human join request when the accepted invite reused an existing queue entry", async () => {
+    const invite = {
+      id: "invite-2",
+      companyId: "company-1",
+      inviteType: "company_join",
+      allowedJoinTypes: "human",
+      tokenHash: "hash",
+      defaultsPayload: null,
+      expiresAt: new Date("2027-03-07T00:10:00.000Z"),
+      invitedByUserId: null,
+      revokedAt: null,
+      acceptedAt: new Date("2026-03-07T00:05:00.000Z"),
+      createdAt: new Date("2026-03-07T00:00:00.000Z"),
+      updatedAt: new Date("2026-03-07T00:05:00.000Z"),
+    };
+    const app = createApp(
+      createDbStub(
+        [invite],
+        [],
+        [{ email: "jane@example.com" }],
+        [
+          {
+            id: "join-1",
+            requestType: "human",
+            status: "pending_approval",
+            requestingUserId: "user-1",
+            requestEmailSnapshot: "jane@example.com",
+          },
+        ],
+        [
+          {
+            name: "Acme Robotics",
+            brandColor: "#114488",
+            logoAssetId: "logo-1",
+          },
+        ],
+        [
+          {
+            companyId: "company-1",
+            objectKey: "company-1/assets/companies/logo-1",
+            contentType: "image/png",
+            byteSize: 3,
+            originalFilename: "logo.png",
+          },
+        ],
+      ),
+      { type: "board", userId: "user-1", source: "session" },
+    );
+
+    const res = await request(app).get("/api/invites/pcp_invite_test");
+
+    expect(res.status).toBe(200);
+    expect(res.body.joinRequestStatus).toBe("pending_approval");
+    expect(res.body.joinRequestType).toBe("human");
   });
 });
