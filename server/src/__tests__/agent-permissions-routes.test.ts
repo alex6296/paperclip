@@ -32,6 +32,7 @@ const baseAgent = {
 
 const mockAgentService = vi.hoisted(() => ({
   getById: vi.fn(),
+  list: vi.fn(),
   create: vi.fn(),
   updatePermissions: vi.fn(),
   getChainOfCommand: vi.fn(),
@@ -161,6 +162,7 @@ describe("agent permission routes", () => {
     mockSyncInstructionsBundleConfigFromFilePath.mockImplementation((_agent, config) => config);
     mockGetTelemetryClient.mockReturnValue({ track: vi.fn() });
     mockAgentService.getById.mockResolvedValue(baseAgent);
+    mockAgentService.list.mockResolvedValue([baseAgent]);
     mockAgentService.getChainOfCommand.mockResolvedValue([]);
     mockAgentService.resolveByReference.mockResolvedValue({ ambiguous: false, agent: baseAgent });
     mockAgentService.create.mockResolvedValue(baseAgent);
@@ -237,6 +239,24 @@ describe("agent permission routes", () => {
       true,
       "board-user",
     );
+  });
+
+  it("rejects unsupported query parameters on the agent list route", async () => {
+    const app = await createApp({
+      type: "board",
+      userId: "board-user",
+      source: "local_implicit",
+      isInstanceAdmin: true,
+      companyIds: [companyId],
+    });
+
+    const res = await request(app)
+      .get(`/api/companies/${companyId}/agents`)
+      .query({ urlKey: "builder" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("urlKey");
+    expect(mockAgentService.list).not.toHaveBeenCalled();
   });
 
   it("normalizes direct agent creation to disable timer heartbeats by default", async () => {
