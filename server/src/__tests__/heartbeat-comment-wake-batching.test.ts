@@ -598,7 +598,7 @@ describe("heartbeat comment wake batching", () => {
             id: issueId,
             identifier: `${issuePrefix}-1`,
             title: "Reopen after deferred comment",
-            status: "todo",
+            status: "in_progress",
             priority: "medium",
           },
         },
