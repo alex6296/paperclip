@@ -11,6 +11,7 @@
 //   PAPERCLIP_RUN_ID              (optional, used as X-Paperclip-Run-Id header)
 //   AIP_PO_AGENT_ID               REQUIRED — the Product Owner's agent id
 //   FIREBASE_PROJECT_ID           REQUIRED — Firebase project id
+//   AIP_BUG_LABEL_ID              optional — label ID to tag issues as bugs
 //   AIP_CRASHLYTICS_DAYS          optional lookback window (default 7)
 //   AIP_CRASHLYTICS_LIMIT         optional max rows (default 50)
 
@@ -67,12 +68,14 @@ function buildIssuePayload(row, poAgentId) {
     .filter(Boolean)
     .join("\n");
 
+  const bugLabelId = process.env.AIP_BUG_LABEL_ID ?? null;
   return {
     title: title.slice(0, 200),
     description,
     priority: severityToPriority(row.severity),
     status: "todo",
     assigneeAgentId: poAgentId,
+    ...(bugLabelId ? { labelIds: [bugLabelId] } : {}),
   };
 }
 

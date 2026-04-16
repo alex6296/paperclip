@@ -23,14 +23,17 @@ node skills/aip-kubernetes-fetch/bin/kubernetes-fetch.mjs [options]
 
 ### Options
 
-| Flag | Default | Notes |
-|---|---|---|
-| `--namespace <ns>` | `--all-namespaces` | Scope events to one namespace |
-| `--context <ctx>` | current context | Pick a non-default kubeconfig context |
-| `--scan-logs` | off | Also tail running pod logs for error patterns |
-| `--tail <n>` | `200` | Log lines per pod when `--scan-logs` is set |
-| `--max-pods <n>` | `10` | Cap pods scanned per run |
-| `--timeout-ms <n>` | `60000` | Hard timeout for the whole operation |
+| Flag               | Default            | Notes                                         |
+| ------------------ | ------------------ | --------------------------------------------- |
+| `--namespace <ns>` | `--all-namespaces` | Scope events to one namespace                 |
+| `--context <ctx>`  | current context    | Pick a non-default kubeconfig context         |
+| `--scan-logs`      | off                | Also tail running pod logs for error patterns |
+| `--tail <n>`       | `200`              | Log lines per pod when `--scan-logs` is set   |
+| `--max-pods <n>`   | `10`               | Cap pods scanned per run                      |
+| `--timeout-ms <n>` | `60000`            | Hard timeout for the whole operation          |
+
+On Windows the default kubeconfig is at `%USERPROFILE%\.kube\config`.
+If that's not found, pass `--context` explicitly or set `KUBECONFIG`.
 
 ## Output
 
@@ -50,7 +53,9 @@ JSON to stdout, shape:
       "resources": ["pod-a", "pod-b", "pod-c"],
       "latestMessage": "...",
       "latestTimestamp": "2026-04-16T10:12:05Z",
-      "sampleEvent": { /* raw k8s event */ }
+      "sampleEvent": {
+        /* raw k8s event */
+      }
     }
   ],
   "podLogErrors": [
@@ -80,10 +85,6 @@ the message.
 `kubectl get events` is cheap — a single short-lived API-server call. But
 there is no upside to polling more often than once per few minutes: the
 same warnings just repeat and the consumer ends up deduplicating them.
-For normal ops, a **3-hour cron** (`0 */3 * * *`) catches slow-moving
-regressions (pods stuck in CrashLoopBackOff, node NotReady, image pull
-failures) without hammering the API server. Firefighting? Trigger it
-manually or temporarily lower the cadence.
 
 If you point a Paperclip routine at this, use
 `concurrencyPolicy: skip_if_active` and `catchUpPolicy: skip_missed`
@@ -97,10 +98,10 @@ get `forbidden`, fix the role — don't swallow the error.
 
 ## Environment
 
-| Var | Required | Notes |
-|---|---|---|
-| `KUBECONFIG` | no | Standard kubectl kubeconfig path |
-| Any cluster auth vars kubectl normally reads | no | Passed through |
+| Var                                          | Required | Notes                            |
+| -------------------------------------------- | -------- | -------------------------------- |
+| `KUBECONFIG`                                 | no       | Standard kubectl kubeconfig path |
+| Any cluster auth vars kubectl normally reads | no       | Passed through                   |
 
 ## Source
 
