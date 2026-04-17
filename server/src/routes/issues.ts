@@ -389,6 +389,22 @@ export function issueRoutes(
       if (allowedByGrant) return;
       const actorAgent = await agentsSvc.getById(req.actor.agentId);
       if (actorAgent && actorAgent.companyId === companyId && canCreateAgentsLegacy(actorAgent)) return;
+      if (actorAgent && actorAgent.companyId === companyId) {
+        const membership = await access.getMembership(companyId, "agent", req.actor.agentId);
+        if (!membership) {
+          // Legacy agents created before principal memberships/grants were added
+          // should retain the historical ability to assign tasks by default.
+          await access.setPrincipalPermission(
+            companyId,
+            "agent",
+            req.actor.agentId,
+            "tasks:assign",
+            true,
+            null,
+          );
+          return;
+        }
+      }
       throw forbidden("Missing permission: tasks:assign");
     }
     throw unauthorized();

@@ -25,6 +25,7 @@ interface RunningProcess {
 interface SpawnTarget {
   command: string;
   args: string[];
+  windowsVerbatim?: boolean;
 }
 
 type ChildProcessWithEvents = ChildProcess & {
@@ -613,6 +614,13 @@ function quoteForCmd(arg: string) {
   return /[\s"&<>|^()]/.test(escaped) ? `"${escaped}"` : escaped;
 }
 
+function buildCmdShimCommandLine(executable: string, args: string[]): string {
+  const inner = [quoteForCmd(executable), ...args.map(quoteForCmd)].join(" ");
+  // `cmd.exe /s /c` needs an outer quote pair around the whole command string
+  // when the executable path itself is quoted (for example under Program Files).
+  return `"${inner}"`;
+}
+
 function resolveWindowsCmdShell(env: NodeJS.ProcessEnv): string {
   const fallbackRoot = env.SystemRoot || process.env.SystemRoot || "C:\\Windows";
   return path.join(fallbackRoot, "System32", "cmd.exe");
@@ -635,10 +643,11 @@ async function resolveSpawnTarget(
     // Always use cmd.exe for .cmd/.bat wrappers. Some environments override
     // ComSpec to PowerShell, which breaks cmd-specific flags like /d /s /c.
     const shell = resolveWindowsCmdShell(env);
-    const commandLine = [quoteForCmd(executable), ...args.map(quoteForCmd)].join(" ");
+    const commandLine = buildCmdShimCommandLine(executable, args);
     return {
       command: shell,
       args: ["/d", "/s", "/c", commandLine],
+      windowsVerbatim: true,
     };
   }
 
@@ -1103,6 +1112,7 @@ export async function runChildProcess(
           env: mergedEnv,
           detached: process.platform !== "win32",
           shell: false,
+          windowsVerbatimArguments: target.windowsVerbatim ?? false,
           stdio: [opts.stdin != null ? "pipe" : "ignore", "pipe", "pipe"],
         }) as ChildProcessWithEvents;
         const startedAt = new Date().toISOString();

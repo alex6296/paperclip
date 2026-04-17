@@ -1,0 +1,24 @@
+{
+  "signatures": [
+    "BackOff:Pod:kube-system",
+    "ContainerdStart:Node:default",
+    "DockerStart:Node:default",
+    "EKBalloonPodIsNotRunning:Node:default",
+    "FailedCreate:DaemonSet:kube-system",
+    "FailedMount:Pod:gke-gmp-system",
+    "InvalidDiskCapacity:Node:default",
+    "KubeletConfigChangeDetected:Node:default",
+    "KubeletStart:Node:default",
+    "NetworkNotReady:Pod:gke-gmp-system",
+    "NetworkNotReady:Pod:kube-system",
+    "NodeNotReady:Pod:gke-gmp-system",
+    "NodeNotReady:Pod:kube-system",
+    "NodeRegistrationCheckerDidNotRunChecks:Node:default",
+    "NodeRegistrationCheckerStart:Node:default",
+    "NodeSysctlChange:Node:default",
+    "ScaleUpFailed:ConfigMap:kube-system",
+    "Unhealthy:Pod:gke-gmp-system",
+    "Unhealthy:Pod:kube-system"
+  ],
+  "updatedAt": "2026-04-17T07:25:56.362Z"
+}

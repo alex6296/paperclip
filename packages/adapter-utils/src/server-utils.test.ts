@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { runChildProcess } from "./server-utils.js";
 
@@ -84,5 +87,35 @@ describe("runChildProcess", () => {
     expect(Number.isInteger(descendantPid) && descendantPid > 0).toBe(true);
 
     expect(await waitForPidExit(descendantPid!, 2_000)).toBe(true);
+  });
+
+  it.skipIf(process.platform !== "win32")("runs .cmd launchers from paths with spaces", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip cmd shim "));
+    const scriptPath = path.join(tempRoot, "echo-arg.cmd");
+    try {
+      await fs.writeFile(
+        scriptPath,
+        ["@echo off", "setlocal", "echo %~1"].join("\r\n"),
+        "utf8",
+      );
+
+      const result = await runChildProcess(
+        randomUUID(),
+        scriptPath,
+        ["hello from cmd shim"],
+        {
+          cwd: tempRoot,
+          env: {},
+          timeoutSec: 5,
+          graceSec: 1,
+          onLog: async () => {},
+        },
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.replace(/\r?\n$/, "")).toBe("hello from cmd shim");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 });

@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { errorHandler } from "../middleware/index.js";
 import { issueRoutes } from "../routes/issues.js";
 
+const AGENT_ID = "11111111-1111-4111-8111-111111111111";
+
 const mockIssueService = vi.hoisted(() => ({
   addComment: vi.fn(),
   assertCheckoutOwner: vi.fn(),
@@ -17,14 +19,28 @@ const mockIssueService = vi.hoisted(() => ({
   update: vi.fn(),
 }));
 
+const mockAccessService = vi.hoisted(() => ({
+  canUser: vi.fn(async () => true),
+  getMembership: vi.fn(async () => null),
+  hasPermission: vi.fn(async () => true),
+  setPrincipalPermission: vi.fn(async () => undefined),
+}));
+
+const mockAgentService = vi.hoisted(() => ({
+  getById: vi.fn(async () => null),
+}));
+
 vi.mock("../services/index.js", () => ({
   accessService: () => ({
-    canUser: vi.fn(async () => true),
-    hasPermission: vi.fn(async () => true),
+    canUser: (...args: Parameters<typeof mockAccessService.canUser>) => mockAccessService.canUser(...args),
+    getMembership: (...args: Parameters<typeof mockAccessService.getMembership>) =>
+      mockAccessService.getMembership(...args),
+    hasPermission: (...args: Parameters<typeof mockAccessService.hasPermission>) =>
+      mockAccessService.hasPermission(...args),
+    setPrincipalPermission: (...args: Parameters<typeof mockAccessService.setPrincipalPermission>) =>
+      mockAccessService.setPrincipalPermission(...args),
   }),
-  agentService: () => ({
-    getById: vi.fn(async () => null),
-  }),
+  agentService: () => mockAgentService,
   documentService: () => ({}),
   executionWorkspaceService: () => ({
     getById: vi.fn(async () => null),
@@ -98,6 +114,11 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
 describe("issue workspace command authorization", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAccessService.canUser.mockResolvedValue(true);
+    mockAccessService.getMembership.mockResolvedValue(null);
+    mockAccessService.hasPermission.mockResolvedValue(true);
+    mockAccessService.setPrincipalPermission.mockResolvedValue(undefined);
+    mockAgentService.getById.mockResolvedValue(null);
     mockIssueService.addComment.mockResolvedValue(null);
     mockIssueService.create.mockResolvedValue(makeIssue());
     mockIssueService.findMentionedAgents.mockResolvedValue([]);
@@ -161,5 +182,80 @@ describe("issue workspace command authorization", () => {
     expect(res.status).toBe(403);
     expect(res.body.error).toContain("host-executed workspace commands");
     expect(mockIssueService.update).not.toHaveBeenCalled();
+  });
+
+  it("repairs legacy agent assignment access when membership is missing", async () => {
+    mockAccessService.hasPermission.mockResolvedValue(false);
+    mockAgentService.getById.mockResolvedValue({
+      id: AGENT_ID,
+      companyId: "company-1",
+      role: "engineer",
+      permissions: {},
+    });
+
+    const app = createApp({
+      type: "agent",
+      agentId: AGENT_ID,
+      companyId: "company-1",
+      source: "agent_key",
+      runId: "run-1",
+    });
+
+    const res = await request(app)
+      .post("/api/companies/company-1/issues")
+      .send({
+        title: "Legacy assignment repair",
+        assigneeAgentId: AGENT_ID,
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockAccessService.getMembership).toHaveBeenCalledWith("company-1", "agent", AGENT_ID);
+    expect(mockAccessService.setPrincipalPermission).toHaveBeenCalledWith(
+      "company-1",
+      "agent",
+      AGENT_ID,
+      "tasks:assign",
+      true,
+      null,
+    );
+    expect(mockIssueService.create).toHaveBeenCalled();
+  });
+
+  it("keeps assignment disabled for agents with membership but no grant", async () => {
+    mockAccessService.hasPermission.mockResolvedValue(false);
+    mockAccessService.getMembership.mockResolvedValue({
+      id: "membership-1",
+      companyId: "company-1",
+      principalType: "agent",
+      principalId: AGENT_ID,
+      membershipRole: "member",
+      status: "active",
+    });
+    mockAgentService.getById.mockResolvedValue({
+      id: AGENT_ID,
+      companyId: "company-1",
+      role: "engineer",
+      permissions: {},
+    });
+
+    const app = createApp({
+      type: "agent",
+      agentId: AGENT_ID,
+      companyId: "company-1",
+      source: "agent_key",
+      runId: "run-1",
+    });
+
+    const res = await request(app)
+      .post("/api/companies/company-1/issues")
+      .send({
+        title: "Assignment should stay forbidden",
+        assigneeAgentId: AGENT_ID,
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("tasks:assign");
+    expect(mockAccessService.setPrincipalPermission).not.toHaveBeenCalled();
+    expect(mockIssueService.create).not.toHaveBeenCalled();
   });
 });
