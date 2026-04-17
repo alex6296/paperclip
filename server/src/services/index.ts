@@ -30,6 +30,7 @@ export { workspaceOperationService } from "./workspace-operations.js";
 export { workProductService } from "./work-products.js";
 export { logActivity, type LogActivityInput } from "./activity-log.js";
 export { notifyHireApproved, type NotifyHireApprovedInput } from "./hire-hook.js";
+export { triggerNewHireOnboarding, type TriggerNewHireOnboardingInput } from "./new-hire-onboarding.js";
 export { publishLiveEvent, subscribeCompanyLiveEvents } from "./live-events.js";
 export { reconcilePersistedRuntimeServicesOnStartup, restartDesiredRuntimeServicesOnStartup } from "./workspace-runtime.js";
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";

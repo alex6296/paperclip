@@ -7,6 +7,7 @@ import { agentService } from "./agents.js";
 import { budgetService } from "./budgets.js";
 import { notifyHireApproved } from "./hire-hook.js";
 import { instanceSettingsService } from "./instance-settings.js";
+import { triggerNewHireOnboarding } from "./new-hire-onboarding.js";
 
 export function approvalService(db: Db) {
   const agentsSvc = agentService(db);
@@ -161,6 +162,13 @@ export function approvalService(db: Db) {
             source: "approval",
             sourceId: id,
             approvedAt: now,
+          }).catch(() => {});
+          void triggerNewHireOnboarding(db, {
+            companyId: updated.companyId,
+            hiredAgentId: hireApprovedAgentId,
+            hiredAgentName: typeof payload.name === "string" ? payload.name : "New Agent",
+            source: "approval",
+            sourceId: id,
           }).catch(() => {});
         }
       }

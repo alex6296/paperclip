@@ -8,6 +8,7 @@ const mockAgentService = vi.hoisted(() => ({
 }));
 
 const mockNotifyHireApproved = vi.hoisted(() => vi.fn());
+const mockTriggerNewHireOnboarding = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/agents.js", () => ({
   agentService: vi.fn(() => mockAgentService),
@@ -15,6 +16,10 @@ vi.mock("../services/agents.js", () => ({
 
 vi.mock("../services/hire-hook.js", () => ({
   notifyHireApproved: mockNotifyHireApproved,
+}));
+
+vi.mock("../services/new-hire-onboarding.js", () => ({
+  triggerNewHireOnboarding: mockTriggerNewHireOnboarding,
 }));
 
 type ApprovalRecord = {
@@ -62,6 +67,7 @@ describe("approvalService resolution idempotency", () => {
     mockAgentService.create.mockResolvedValue({ id: "agent-1" });
     mockAgentService.terminate.mockResolvedValue(undefined);
     mockNotifyHireApproved.mockResolvedValue(undefined);
+    mockTriggerNewHireOnboarding.mockResolvedValue(undefined);
   });
 
   it("treats repeated approve retries as no-ops after another worker resolves the approval", async () => {
@@ -77,6 +83,7 @@ describe("approvalService resolution idempotency", () => {
     expect(result.approval.status).toBe("approved");
     expect(mockAgentService.activatePendingApproval).not.toHaveBeenCalled();
     expect(mockNotifyHireApproved).not.toHaveBeenCalled();
+    expect(mockTriggerNewHireOnboarding).not.toHaveBeenCalled();
   });
 
   it("treats repeated reject retries as no-ops after another worker resolves the approval", async () => {
@@ -103,5 +110,6 @@ describe("approvalService resolution idempotency", () => {
     expect(result.applied).toBe(true);
     expect(mockAgentService.activatePendingApproval).toHaveBeenCalledWith("agent-1");
     expect(mockNotifyHireApproved).toHaveBeenCalledTimes(1);
+    expect(mockTriggerNewHireOnboarding).toHaveBeenCalledTimes(1);
   });
 });

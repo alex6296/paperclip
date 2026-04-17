@@ -5,6 +5,7 @@
     "DockerStart:Node:default",
     "EKBalloonPodIsNotRunning:Node:default",
     "FailedCreate:DaemonSet:kube-system",
+    "FailedKillPod:Pod:kube-system",
     "FailedMount:Pod:gke-gmp-system",
     "InvalidDiskCapacity:Node:default",
     "KubeletConfigChangeDetected:Node:default",
@@ -20,5 +21,5 @@
     "Unhealthy:Pod:gke-gmp-system",
     "Unhealthy:Pod:kube-system"
   ],
-  "updatedAt": "2026-04-17T07:25:56.362Z"
+  "updatedAt": "2026-04-17T15:12:56.450Z"
 }

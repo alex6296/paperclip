@@ -42,6 +42,7 @@ import {
   logActivity,
   secretService,
   syncInstructionsBundleConfigFromFilePath,
+  triggerNewHireOnboarding,
   workspaceOperationService,
 } from "../services/index.js";
 import { conflict, forbidden, notFound, unprocessable } from "../errors.js";
@@ -1517,6 +1518,16 @@ export function agentRoutes(db: Db) {
       actor.actorType === "user" ? actor.actorId : null,
     );
 
+    if (!requiresApproval) {
+      void triggerNewHireOnboarding(db, {
+        companyId,
+        hiredAgentId: agent.id,
+        hiredAgentName: agent.name,
+        source: "direct_hire",
+        sourceId: agent.id,
+      }).catch(() => {});
+    }
+
     if (approval) {
       await logActivity(db, {
         companyId,
@@ -1604,6 +1615,14 @@ export function agentRoutes(db: Db) {
       agent.id,
       req.actor.type === "board" ? (req.actor.userId ?? null) : null,
     );
+
+    void triggerNewHireOnboarding(db, {
+      companyId,
+      hiredAgentId: agent.id,
+      hiredAgentName: agent.name,
+      source: "direct_hire",
+      sourceId: agent.id,
+    }).catch(() => {});
 
     if (agent.budgetMonthlyCents > 0) {
       await budgets.upsertPolicy(
