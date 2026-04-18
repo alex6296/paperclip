@@ -7,6 +7,7 @@
     "FailedCreate:DaemonSet:kube-system",
     "FailedKillPod:Pod:kube-system",
     "FailedMount:Pod:gke-gmp-system",
+    "IngressGCE_RemoveNodes:Unknown:default",
     "InvalidDiskCapacity:Node:default",
     "KubeletConfigChangeDetected:Node:default",
     "KubeletStart:Node:default",
@@ -18,8 +19,9 @@
     "NodeRegistrationCheckerStart:Node:default",
     "NodeSysctlChange:Node:default",
     "ScaleUpFailed:ConfigMap:kube-system",
+    "Sync:Ingress:default",
     "Unhealthy:Pod:gke-gmp-system",
     "Unhealthy:Pod:kube-system"
   ],
-  "updatedAt": "2026-04-17T15:12:56.450Z"
+  "updatedAt": "2026-04-18T15:07:25.498Z"
 }
