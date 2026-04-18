@@ -8,6 +8,8 @@ function makeScheduleTrigger(overrides: Partial<RoutineTrigger> = {}): RoutineTr
     companyId: "company-1",
     routineId: "routine-1",
     kind: "schedule",
+    eventType: null,
+    eventFilters: null,
     label: "Daily",
     enabled: true,
     cronExpression: "0 10 * * *",
@@ -39,6 +41,9 @@ describe("buildRoutineTriggerPatch", () => {
         cronExpression: "0 10 * * *",
         signingMode: "bearer",
         replayWindowSec: "300",
+        eventType: "new_hire",
+        eventFromStatus: "",
+        eventToStatus: "",
       },
       "America/Chicago",
     );
@@ -58,6 +63,9 @@ describe("buildRoutineTriggerPatch", () => {
         cronExpression: "15 9 * * 1-5",
         signingMode: "bearer",
         replayWindowSec: "300",
+        eventType: "new_hire",
+        eventFromStatus: "",
+        eventToStatus: "",
       },
       "America/Chicago",
     );
@@ -66,6 +74,32 @@ describe("buildRoutineTriggerPatch", () => {
       label: null,
       cronExpression: "15 9 * * 1-5",
       timezone: "America/Chicago",
+    });
+  });
+
+  it("builds event trigger filters for issue status changes", () => {
+    const patch = buildRoutineTriggerPatch(
+      makeScheduleTrigger({
+        kind: "event",
+        eventType: "issue_status_changed",
+        eventFilters: { toStatus: "blocked" },
+      }),
+      {
+        label: "Blocked issues",
+        cronExpression: "",
+        signingMode: "bearer",
+        replayWindowSec: "300",
+        eventType: "issue_status_changed",
+        eventFromStatus: "",
+        eventToStatus: "blocked",
+      },
+      "UTC",
+    );
+
+    expect(patch).toEqual({
+      label: "Blocked issues",
+      eventType: "issue_status_changed",
+      eventFilters: { toStatus: "blocked" },
     });
   });
 });

@@ -167,6 +167,21 @@ export function isClaudeMaxTurnsResult(parsed: Record<string, unknown> | null | 
   return /max(?:imum)?\s+turns?/i.test(resultText);
 }
 
+const TOKEN_LIMIT_RE =
+  /context[_ ]length[_ ]exceeded|prompt[_ ]too[_ ]long|context[_ ]window[_ ](is[_ ])?(full|exceeded?)|too[_ ]many[_ ]tokens|maximum[_ ]context[_ ]length|exceeds[_ ](the[_ ])?context[_ ]window|input[_ ]is[_ ]too[_ ]long/i;
+
+export function isClaudeTokenLimitResult(
+  parsed: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!parsed) return false;
+
+  const errors = extractClaudeErrorMessages(parsed);
+  const resultText = asString(parsed.result, "").trim();
+  const allMessages = [resultText, ...errors].filter(Boolean);
+
+  return allMessages.some((msg) => TOKEN_LIMIT_RE.test(msg));
+}
+
 export function isClaudeUnknownSessionError(parsed: Record<string, unknown>): boolean {
   const resultText = asString(parsed.result, "").trim();
   const allMessages = [resultText, ...extractClaudeErrorMessages(parsed)]

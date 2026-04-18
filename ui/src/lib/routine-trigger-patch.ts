@@ -5,6 +5,9 @@ export type RoutineTriggerEditorDraft = {
   cronExpression: string;
   signingMode: string;
   replayWindowSec: string;
+  eventType: string;
+  eventFromStatus: string;
+  eventToStatus: string;
 };
 
 export function buildRoutineTriggerPatch(
@@ -24,6 +27,14 @@ export function buildRoutineTriggerPatch(
   if (trigger.kind === "webhook") {
     patch.signingMode = draft.signingMode;
     patch.replayWindowSec = Number(draft.replayWindowSec || "300");
+  }
+
+  if (trigger.kind === "event") {
+    patch.eventType = draft.eventType;
+    patch.eventFilters = {
+      ...(draft.eventFromStatus ? { fromStatus: draft.eventFromStatus } : {}),
+      ...(draft.eventToStatus ? { toStatus: draft.eventToStatus } : {}),
+    };
   }
 
   return patch;

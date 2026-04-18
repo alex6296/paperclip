@@ -39,6 +39,8 @@ const trigger = {
   companyId,
   routineId,
   kind: "schedule",
+  eventType: null,
+  eventFilters: null,
   label: "weekday",
   enabled: false,
   cronExpression: "0 10 * * 1-5",
@@ -292,5 +294,49 @@ describe("routine routes", () => {
       userId: "board-user",
     });
     expect(mockTrackRoutineCreated).toHaveBeenCalledWith(expect.anything());
+  });
+
+  it("passes event trigger configuration through when the board user has tasks:assign", async () => {
+    mockAccessService.canUser.mockResolvedValue(true);
+    mockRoutineService.createTrigger.mockResolvedValue({
+      trigger: {
+        ...trigger,
+        kind: "event",
+        eventType: "issue_status_changed",
+        eventFilters: { toStatus: "blocked" },
+        cronExpression: null,
+        timezone: null,
+      },
+      secretMaterial: null,
+    });
+    const app = await createApp({
+      type: "board",
+      userId: "board-user",
+      source: "session",
+      isInstanceAdmin: false,
+      companyIds: [companyId],
+    });
+
+    const res = await request(app)
+      .post(`/api/routines/${routineId}/triggers`)
+      .send({
+        kind: "event",
+        eventType: "issue_status_changed",
+        eventFilters: { toStatus: "blocked" },
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockRoutineService.createTrigger).toHaveBeenCalledWith(routineId, {
+      enabled: true,
+      kind: "event",
+      eventType: "issue_status_changed",
+      eventFilters: { toStatus: "blocked" },
+    }, {
+      agentId: null,
+      userId: "board-user",
+    });
+    expect(res.body.trigger.kind).toBe("event");
+    expect(res.body.trigger.eventType).toBe("issue_status_changed");
+    expect(res.body.trigger.eventFilters).toEqual({ toStatus: "blocked" });
   });
 });

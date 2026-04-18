@@ -87,7 +87,7 @@ All fields from create are updatable. **Agents can only update routines assigned
 POST /api/routines/{routineId}/triggers
 ```
 
-Three trigger kinds:
+Four trigger kinds:
 
 **Schedule** — fires on a cron expression:
 
@@ -118,6 +118,35 @@ Signing modes: `bearer` (default), `hmac_sha256`. Replay window range: 30–8640
   "kind": "api"
 }
 ```
+
+**Event** - fires when Paperclip emits an internal lifecycle event:
+
+```
+{
+  "kind": "event",
+  "eventType": "new_hire"
+}
+```
+
+For issue status transitions you can filter specific transitions:
+
+```
+{
+  "kind": "event",
+  "eventType": "issue_status_changed",
+  "eventFilters": {
+    "toStatus": "blocked"
+  }
+}
+```
+
+Supported event types:
+
+- `new_hire`
+- `issue_assigned`
+- `issue_status_changed`
+- `issue_blockers_resolved`
+- `issue_children_completed`
 
 A routine can have multiple triggers of different kinds.
 
@@ -199,3 +228,4 @@ active -> paused -> active
 ```
 
 Archived routines do not fire and cannot be reactivated.
+

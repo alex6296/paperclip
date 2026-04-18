@@ -1375,6 +1375,23 @@ export function issueRoutes(
       },
     });
 
+    if (issue.assigneeAgentId) {
+      void routinesSvc.fireEvent({
+        companyId,
+        eventType: "issue_assigned",
+        idempotencyKey: `issue_assigned:create:${issue.id}`,
+        payload: {
+          issueId: issue.id,
+          issueIdentifier: issue.identifier,
+          issueTitle: issue.title,
+          issueStatus: issue.status,
+          issuePriority: issue.priority,
+          assigneeAgentId: issue.assigneeAgentId,
+          mutation: "create",
+        },
+      }).catch((err) => logger.warn({ err, issueId: issue.id }, "failed to fire issue_assigned routine event"));
+    }
+
     void queueIssueAssignmentWakeup({
       heartbeat,
       issue,
@@ -1805,6 +1822,42 @@ export function issueRoutes(
         wakeups.set(`${agentId}:${wakeIssueId}`, { agentId, wakeup });
       };
 
+      if (assigneeChanged && issue.assigneeAgentId) {
+        await routinesSvc.fireEvent({
+          companyId: issue.companyId,
+          eventType: "issue_assigned",
+          idempotencyKey: `issue_assigned:update:${issue.id}:${issue.updatedAt.toISOString()}`,
+          payload: {
+            issueId: issue.id,
+            issueIdentifier: issue.identifier,
+            issueTitle: issue.title,
+            issueStatus: issue.status,
+            issuePriority: issue.priority,
+            assigneeAgentId: issue.assigneeAgentId,
+            previousAssigneeAgentId: existing.assigneeAgentId,
+            previousAssigneeUserId: existing.assigneeUserId,
+            mutation: "update",
+          },
+        }).catch((err) => logger.warn({ err, issueId: issue.id }, "failed to fire issue_assigned routine event"));
+      }
+
+      if (existing.status !== issue.status) {
+        await routinesSvc.fireEvent({
+          companyId: issue.companyId,
+          eventType: "issue_status_changed",
+          idempotencyKey: `issue_status_changed:${issue.id}:${issue.updatedAt.toISOString()}`,
+          payload: {
+            issueId: issue.id,
+            issueIdentifier: issue.identifier,
+            issueTitle: issue.title,
+            issuePriority: issue.priority,
+            assigneeAgentId: issue.assigneeAgentId,
+            fromStatus: existing.status,
+            toStatus: issue.status,
+          },
+        }).catch((err) => logger.warn({ err, issueId: issue.id }, "failed to fire issue_status_changed routine event"));
+      }
+
       if (executionStageWakeup) {
         addWakeup(executionStageWakeup.agentId, executionStageWakeup.wakeup);
       } else if (assigneeChanged && issue.assigneeAgentId && issue.status !== "backlog") {
@@ -1920,6 +1973,24 @@ export function issueRoutes(
       if (becameDone) {
         const dependents = await svc.listWakeableBlockedDependents(issue.id);
         for (const dependent of dependents) {
+          await routinesSvc.fireEvent({
+            companyId: issue.companyId,
+            eventType: "issue_blockers_resolved",
+            idempotencyKey: `issue_blockers_resolved:${dependent.id}:${issue.id}:${issue.updatedAt.toISOString()}`,
+            payload: {
+              issueId: dependent.id,
+              issueIdentifier: dependent.identifier,
+              issueTitle: dependent.title,
+              resolvedBlockerIssueId: issue.id,
+              resolvedBlockerIssueIdentifier: issue.identifier,
+              resolvedBlockerIssueTitle: issue.title,
+              blockerIssueIds: dependent.blockerIssueIds,
+            },
+          }).catch((err) => logger.warn(
+            { err, issueId: dependent.id, resolvedBlockerIssueId: issue.id },
+            "failed to fire issue_blockers_resolved routine event",
+          ));
+
           addWakeup(dependent.assigneeAgentId, {
             source: "automation",
             triggerDetail: "system",
@@ -1948,6 +2019,24 @@ export function issueRoutes(
       if (becameTerminal && issue.parentId) {
         const parent = await svc.getWakeableParentAfterChildCompletion(issue.parentId);
         if (parent) {
+          await routinesSvc.fireEvent({
+            companyId: issue.companyId,
+            eventType: "issue_children_completed",
+            idempotencyKey: `issue_children_completed:${parent.id}:${issue.id}:${issue.updatedAt.toISOString()}`,
+            payload: {
+              issueId: parent.id,
+              issueIdentifier: parent.identifier,
+              issueTitle: parent.title,
+              completedChildIssueId: issue.id,
+              completedChildIssueIdentifier: issue.identifier,
+              completedChildIssueTitle: issue.title,
+              childIssueIds: parent.childIssueIds,
+            },
+          }).catch((err) => logger.warn(
+            { err, issueId: parent.id, completedChildIssueId: issue.id },
+            "failed to fire issue_children_completed routine event",
+          ));
+
           addWakeup(parent.assigneeAgentId, {
             source: "automation",
             triggerDetail: "system",

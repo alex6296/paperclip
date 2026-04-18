@@ -1334,6 +1334,8 @@ export function issueService(db: Db) {
       const candidates = await db
         .select({
           id: issues.id,
+          identifier: issues.identifier,
+          title: issues.title,
           assigneeAgentId: issues.assigneeAgentId,
           status: issues.status,
         })
@@ -1385,6 +1387,8 @@ export function issueService(db: Db) {
         .filter((candidate) => candidate.allBlockersDone)
         .map((candidate) => ({
           id: candidate.id,
+          identifier: candidate.identifier,
+          title: candidate.title,
           assigneeAgentId: candidate.assigneeAgentId!,
           blockerIssueIds: candidate.blockerIssueIds,
         }));
@@ -1394,6 +1398,8 @@ export function issueService(db: Db) {
       const parent = await db
         .select({
           id: issues.id,
+          identifier: issues.identifier,
+          title: issues.title,
           assigneeAgentId: issues.assigneeAgentId,
           status: issues.status,
           companyId: issues.companyId,
@@ -1416,6 +1422,8 @@ export function issueService(db: Db) {
 
       return {
         id: parent.id,
+        identifier: parent.identifier,
+        title: parent.title,
         assigneeAgentId: parent.assigneeAgentId,
         childIssueIds: children.map((child) => child.id),
       };

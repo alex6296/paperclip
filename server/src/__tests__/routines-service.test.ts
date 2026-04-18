@@ -399,6 +399,89 @@ describeEmbeddedPostgres("routine service live-execution coalescing", () => {
     });
   });
 
+  it("fires new hire event triggers and forwards event payload values into routine templates", async () => {
+    const { companyId, agentId, projectId, svc } = await seedFixture();
+    const eventRoutine = await svc.create(
+      companyId,
+      {
+        projectId,
+        goalId: null,
+        parentIssueId: null,
+        title: "Onboard {{hiredAgentName}}",
+        description: "Set up onboarding for {{hiredAgentName}}",
+        assigneeAgentId: agentId,
+        priority: "medium",
+        status: "active",
+        concurrencyPolicy: "coalesce_if_active",
+        catchUpPolicy: "skip_missed",
+        variables: [
+          { name: "hiredAgentName", label: null, type: "text", defaultValue: null, required: true, options: [] },
+        ],
+      },
+      {},
+    );
+
+    await svc.createTrigger(
+      eventRoutine.id,
+      {
+        kind: "event",
+        eventType: "new_hire",
+        label: "new-hire",
+      },
+      {},
+    );
+
+    const runs = await svc.fireEvent({
+      companyId,
+      eventType: "new_hire",
+      payload: { hiredAgentName: "Alex" },
+    });
+
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.status).toBe("issue_created");
+
+    const createdIssue = await db
+      .select({ title: issues.title, description: issues.description })
+      .from(issues)
+      .where(eq(issues.id, runs[0]!.linkedIssueId!))
+      .then((rows) => rows[0] ?? null);
+
+    expect(createdIssue).toEqual({
+      title: "Onboard Alex",
+      description: "Set up onboarding for Alex",
+    });
+  });
+
+  it("supports issue status change event filters for blocked-only routines", async () => {
+    const { companyId, routine, svc } = await seedFixture();
+
+    await svc.createTrigger(
+      routine.id,
+      {
+        kind: "event",
+        eventType: "issue_status_changed",
+        eventFilters: { toStatus: "blocked" },
+        label: "blocked-only",
+      },
+      {},
+    );
+
+    const doneRuns = await svc.fireEvent({
+      companyId,
+      eventType: "issue_status_changed",
+      payload: { issueId: randomUUID(), fromStatus: "todo", toStatus: "done" },
+    });
+    expect(doneRuns).toHaveLength(0);
+
+    const blockedRuns = await svc.fireEvent({
+      companyId,
+      eventType: "issue_status_changed",
+      payload: { issueId: randomUUID(), fromStatus: "todo", toStatus: "blocked" },
+    });
+    expect(blockedRuns).toHaveLength(1);
+    expect(blockedRuns[0]?.status).toBe("issue_created");
+  });
+
   it("attaches the selected execution workspace to manually triggered routine issues", async () => {
     const { companyId, projectId, routine, svc } = await seedFixture();
     const projectWorkspaceId = randomUUID();

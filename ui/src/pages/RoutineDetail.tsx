@@ -54,11 +54,18 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import type { RoutineTrigger, RoutineVariable } from "@paperclipai/shared";
+import { ISSUE_STATUSES, type RoutineTrigger, type RoutineVariable } from "@paperclipai/shared";
 
 const concurrencyPolicies = ["coalesce_if_active", "always_enqueue", "skip_if_active"];
 const catchUpPolicies = ["skip_missed", "enqueue_missed_with_cap"];
-const triggerKinds = ["schedule", "webhook"];
+const triggerKinds = ["schedule", "api", "event", "webhook"];
+const routineEventTypes = [
+  "new_hire",
+  "issue_assigned",
+  "issue_status_changed",
+  "issue_blockers_resolved",
+  "issue_children_completed",
+] as const;
 const signingModes = ["bearer", "hmac_sha256", "github_hmac", "none"];
 const routineTabs = ["triggers", "runs", "activity"] as const;
 const concurrencyPolicyDescriptions: Record<string, string> = {
@@ -77,6 +84,13 @@ const signingModeDescriptions: Record<string, string> = {
   none: "No authentication — the webhook URL itself acts as a shared secret.",
 };
 const SIGNING_MODES_WITHOUT_REPLAY_WINDOW = new Set(["github_hmac", "none"]);
+const routineEventTypeLabels: Record<string, string> = {
+  new_hire: "New hire",
+  issue_assigned: "Issue assigned",
+  issue_status_changed: "Issue status changed",
+  issue_blockers_resolved: "Issue blockers resolved",
+  issue_children_completed: "Issue children completed",
+};
 
 type RoutineTab = (typeof routineTabs)[number];
 
@@ -121,6 +135,26 @@ function getLocalTimezone(): string {
   }
 }
 
+function getTriggerEventFilterValue(trigger: RoutineTrigger, key: "fromStatus" | "toStatus") {
+  const filters =
+    trigger.eventFilters && typeof trigger.eventFilters === "object" && !Array.isArray(trigger.eventFilters)
+      ? (trigger.eventFilters as Record<string, unknown>)
+      : null;
+  return typeof filters?.[key] === "string" ? (filters[key] as string) : "";
+}
+
+function getTriggerSummary(trigger: RoutineTrigger) {
+  if (trigger.kind === "schedule" && trigger.nextRunAt) {
+    return `Next: ${new Date(trigger.nextRunAt).toLocaleString()}`;
+  }
+  if (trigger.kind === "webhook") return "Webhook";
+  if (trigger.kind === "api") return "API";
+  if (trigger.kind === "event") {
+    return routineEventTypeLabels[trigger.eventType ?? ""] ?? "Event";
+  }
+  return trigger.kind;
+}
+
 function buildRoutineMutationPayload(input: {
   title: string;
   description: string;
@@ -155,6 +189,9 @@ function TriggerEditor({
     cronExpression: trigger.cronExpression ?? "",
     signingMode: trigger.signingMode ?? "bearer",
     replayWindowSec: String(trigger.replayWindowSec ?? 300),
+    eventType: trigger.eventType ?? "new_hire",
+    eventFromStatus: getTriggerEventFilterValue(trigger, "fromStatus"),
+    eventToStatus: getTriggerEventFilterValue(trigger, "toStatus"),
   });
 
   useEffect(() => {
@@ -163,6 +200,9 @@ function TriggerEditor({
       cronExpression: trigger.cronExpression ?? "",
       signingMode: trigger.signingMode ?? "bearer",
       replayWindowSec: String(trigger.replayWindowSec ?? 300),
+      eventType: trigger.eventType ?? "new_hire",
+      eventFromStatus: getTriggerEventFilterValue(trigger, "fromStatus"),
+      eventToStatus: getTriggerEventFilterValue(trigger, "toStatus"),
     });
   }, [trigger]);
 
@@ -171,15 +211,9 @@ function TriggerEditor({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm font-medium">
           {trigger.kind === "schedule" ? <Clock3 className="h-3.5 w-3.5" /> : trigger.kind === "webhook" ? <Webhook className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
-          {trigger.label ?? trigger.kind}
+          {trigger.label ?? (trigger.kind === "event" ? routineEventTypeLabels[trigger.eventType ?? ""] ?? trigger.kind : trigger.kind)}
         </div>
-        <span className="text-xs text-muted-foreground">
-          {trigger.kind === "schedule" && trigger.nextRunAt
-            ? `Next: ${new Date(trigger.nextRunAt).toLocaleString()}`
-            : trigger.kind === "webhook"
-              ? "Webhook"
-              : "API"}
-        </span>
+        <span className="text-xs text-muted-foreground">{getTriggerSummary(trigger)}</span>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -225,6 +259,76 @@ function TriggerEditor({
                   onChange={(event) => setDraft((current) => ({ ...current, replayWindowSec: event.target.value }))}
                 />
               </div>
+            )}
+          </>
+        )}
+        {trigger.kind === "event" && (
+          <>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Event</Label>
+              <Select
+                value={draft.eventType}
+                onValueChange={(eventType) => setDraft((current) => ({
+                  ...current,
+                  eventType: eventType as (typeof routineEventTypes)[number],
+                  ...(eventType === "issue_status_changed" ? {} : { eventFromStatus: "", eventToStatus: "" }),
+                }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {routineEventTypes.map((eventType) => (
+                    <SelectItem key={eventType} value={eventType}>
+                      {routineEventTypeLabels[eventType] ?? eventType}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {draft.eventType === "issue_status_changed" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">From status</Label>
+                  <Select
+                    value={draft.eventFromStatus || "__any__"}
+                    onValueChange={(eventFromStatus) => setDraft((current) => ({
+                      ...current,
+                      eventFromStatus: eventFromStatus === "__any__" ? "" : eventFromStatus,
+                    }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__any__">Any</SelectItem>
+                      {ISSUE_STATUSES.map((status) => (
+                        <SelectItem key={status} value={status}>{status}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">To status</Label>
+                  <Select
+                    value={draft.eventToStatus || "__any__"}
+                    onValueChange={(eventToStatus) => setDraft((current) => ({
+                      ...current,
+                      eventToStatus: eventToStatus === "__any__" ? "" : eventToStatus,
+                    }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__any__">Any</SelectItem>
+                      {ISSUE_STATUSES.map((status) => (
+                        <SelectItem key={status} value={status}>{status}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
             )}
           </>
         )}
@@ -282,6 +386,9 @@ export function RoutineDetail() {
     cronExpression: "0 10 * * *",
     signingMode: "bearer",
     replayWindowSec: "300",
+    eventType: "new_hire",
+    eventFromStatus: "",
+    eventToStatus: "",
   });
   const [editDraft, setEditDraft] = useState<{
     title: string;
@@ -512,6 +619,15 @@ export function RoutineDetail() {
         label: autoLabel,
         ...(newTrigger.kind === "schedule"
           ? { cronExpression: newTrigger.cronExpression.trim(), timezone: getLocalTimezone() }
+          : {}),
+        ...(newTrigger.kind === "event"
+          ? {
+              eventType: newTrigger.eventType,
+              eventFilters: {
+                ...(newTrigger.eventFromStatus ? { fromStatus: newTrigger.eventFromStatus } : {}),
+                ...(newTrigger.eventToStatus ? { toStatus: newTrigger.eventToStatus } : {}),
+              },
+            }
           : {}),
         ...(newTrigger.kind === "webhook"
           ? {
@@ -978,14 +1094,21 @@ export function RoutineDetail() {
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs">Kind</Label>
-                <Select value={newTrigger.kind} onValueChange={(kind) => setNewTrigger((current) => ({ ...current, kind }))}>
+                <Select
+                  value={newTrigger.kind}
+                  onValueChange={(kind) => setNewTrigger((current) => ({
+                    ...current,
+                    kind,
+                    ...(kind === "event" ? {} : { eventFromStatus: "", eventToStatus: "" }),
+                  }))}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {triggerKinds.map((kind) => (
-                      <SelectItem key={kind} value={kind} disabled={kind === "webhook"}>
-                        {kind}{kind === "webhook" ? " — COMING SOON" : ""}
+                      <SelectItem key={kind} value={kind}>
+                        {kind}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1021,6 +1144,76 @@ export function RoutineDetail() {
                       <Label className="text-xs">Replay window (seconds)</Label>
                       <Input value={newTrigger.replayWindowSec} onChange={(event) => setNewTrigger((current) => ({ ...current, replayWindowSec: event.target.value }))} />
                     </div>
+                  )}
+                </>
+              )}
+              {newTrigger.kind === "event" && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Event</Label>
+                    <Select
+                      value={newTrigger.eventType}
+                      onValueChange={(eventType) => setNewTrigger((current) => ({
+                        ...current,
+                        eventType: eventType as (typeof routineEventTypes)[number],
+                        ...(eventType === "issue_status_changed" ? {} : { eventFromStatus: "", eventToStatus: "" }),
+                      }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {routineEventTypes.map((eventType) => (
+                          <SelectItem key={eventType} value={eventType}>
+                            {routineEventTypeLabels[eventType] ?? eventType}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {newTrigger.eventType === "issue_status_changed" && (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">From status</Label>
+                        <Select
+                          value={newTrigger.eventFromStatus || "__any__"}
+                          onValueChange={(eventFromStatus) => setNewTrigger((current) => ({
+                            ...current,
+                            eventFromStatus: eventFromStatus === "__any__" ? "" : eventFromStatus,
+                          }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__any__">Any</SelectItem>
+                            {ISSUE_STATUSES.map((status) => (
+                              <SelectItem key={status} value={status}>{status}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">To status</Label>
+                        <Select
+                          value={newTrigger.eventToStatus || "__any__"}
+                          onValueChange={(eventToStatus) => setNewTrigger((current) => ({
+                            ...current,
+                            eventToStatus: eventToStatus === "__any__" ? "" : eventToStatus,
+                          }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__any__">Any</SelectItem>
+                            {ISSUE_STATUSES.map((status) => (
+                              <SelectItem key={status} value={status}>{status}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
                   )}
                 </>
               )}
@@ -1126,3 +1319,4 @@ export function RoutineDetail() {
     </div>
   );
 }
+
