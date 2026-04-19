@@ -118,4 +118,35 @@ describe("runChildProcess", () => {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(process.platform !== "win32")("runs quoted .cmd launchers from paths with spaces", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip cmd shim quoted "));
+    const scriptPath = path.join(tempRoot, "echo-arg.cmd");
+    const quotedScriptPath = `"${scriptPath}"`;
+    try {
+      await fs.writeFile(
+        scriptPath,
+        ["@echo off", "setlocal", "echo %~1"].join("\r\n"),
+        "utf8",
+      );
+
+      const result = await runChildProcess(
+        randomUUID(),
+        quotedScriptPath,
+        ["hello from quoted cmd shim"],
+        {
+          cwd: tempRoot,
+          env: {},
+          timeoutSec: 5,
+          graceSec: 1,
+          onLog: async () => {},
+        },
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.replace(/\r?\n$/, "")).toBe("hello from quoted cmd shim");
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });

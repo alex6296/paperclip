@@ -61,6 +61,23 @@ export function parseCodexJsonl(stdout: string) {
   };
 }
 
+const CODEX_TOKEN_LIMIT_RE =
+  /context[_ ]length[_ ]exceeded|prompt[_ ]too[_ ]long|context[_ ]window[_ ](is[_ ])?(full|exceeded?)|too[_ ]many[_ ]tokens|maximum[_ ]context[_ ]length|exceeds[_ ](the[_ ])?context[_ ]window|input[_ ]is[_ ]too[_ ]long|context_length_exceeded|insufficient_quota|rate_limit_exceeded/i;
+
+/**
+ * Returns true when the Codex run failed because the context window is full or
+ * the usage quota was exhausted. These are transient, expected conditions — the
+ * session should be preserved and the reconciler should not escalate the issue.
+ */
+export function isCodexTokenLimitResult(parsed: ReturnType<typeof parseCodexJsonl>, stderr: string): boolean {
+  const haystack = [parsed.errorMessage ?? "", stderr]
+    .flatMap((s) => s.split(/\r?\n/))
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+  return CODEX_TOKEN_LIMIT_RE.test(haystack);
+}
+
 export function isCodexUnknownSessionError(stdout: string, stderr: string): boolean {
   const haystack = `${stdout}\n${stderr}`
     .split(/\r?\n/)

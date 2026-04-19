@@ -567,6 +567,21 @@ function windowsPathExts(env: NodeJS.ProcessEnv): string[] {
   return (env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean);
 }
 
+function stripMatchingOuterQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) return trimmed;
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  if ((first === "\"" && last === "\"") || (first === "'" && last === "'")) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function normalizeCommandToken(command: string): string {
+  return stripMatchingOuterQuotes(command);
+}
+
 async function pathExists(candidate: string) {
   try {
     await fs.access(candidate, process.platform === "win32" ? fsConstants.F_OK : fsConstants.X_OK);
@@ -577,9 +592,10 @@ async function pathExists(candidate: string) {
 }
 
 async function resolveCommandPath(command: string, cwd: string, env: NodeJS.ProcessEnv): Promise<string | null> {
-  const hasPathSeparator = command.includes("/") || command.includes("\\");
+  const normalizedCommand = normalizeCommandToken(command);
+  const hasPathSeparator = normalizedCommand.includes("/") || normalizedCommand.includes("\\");
   if (hasPathSeparator) {
-    const absolute = path.isAbsolute(command) ? command : path.resolve(cwd, command);
+    const absolute = path.isAbsolute(normalizedCommand) ? normalizedCommand : path.resolve(cwd, normalizedCommand);
     return (await pathExists(absolute)) ? absolute : null;
   }
 
@@ -587,15 +603,15 @@ async function resolveCommandPath(command: string, cwd: string, env: NodeJS.Proc
   const delimiter = process.platform === "win32" ? ";" : ":";
   const dirs = pathValue.split(delimiter).filter(Boolean);
   const exts = process.platform === "win32" ? windowsPathExts(env) : [""];
-  const hasExtension = process.platform === "win32" && path.extname(command).length > 0;
+  const hasExtension = process.platform === "win32" && path.extname(normalizedCommand).length > 0;
 
   for (const dir of dirs) {
     const candidates =
       process.platform === "win32"
         ? hasExtension
-          ? [path.join(dir, command)]
-          : exts.map((ext) => path.join(dir, `${command}${ext}`))
-        : [path.join(dir, command)];
+          ? [path.join(dir, normalizedCommand)]
+          : exts.map((ext) => path.join(dir, `${normalizedCommand}${ext}`))
+        : [path.join(dir, normalizedCommand)];
     for (const candidate of candidates) {
       if (await pathExists(candidate)) return candidate;
     }
@@ -632,8 +648,9 @@ async function resolveSpawnTarget(
   cwd: string,
   env: NodeJS.ProcessEnv,
 ): Promise<SpawnTarget> {
-  const resolved = await resolveCommandPath(command, cwd, env);
-  const executable = resolved ?? command;
+  const normalizedCommand = normalizeCommandToken(command);
+  const resolved = await resolveCommandPath(normalizedCommand, cwd, env);
+  const executable = resolved ?? normalizedCommand;
 
   if (process.platform !== "win32") {
     return { command: executable, args };
@@ -1060,13 +1077,14 @@ export async function removeMaintainerOnlySkillSymlinks(
 }
 
 export async function ensureCommandResolvable(command: string, cwd: string, env: NodeJS.ProcessEnv) {
-  const resolved = await resolveCommandPath(command, cwd, env);
+  const normalizedCommand = normalizeCommandToken(command);
+  const resolved = await resolveCommandPath(normalizedCommand, cwd, env);
   if (resolved) return;
-  if (command.includes("/") || command.includes("\\")) {
-    const absolute = path.isAbsolute(command) ? command : path.resolve(cwd, command);
-    throw new Error(`Command is not executable: "${command}" (resolved: "${absolute}")`);
+  if (normalizedCommand.includes("/") || normalizedCommand.includes("\\")) {
+    const absolute = path.isAbsolute(normalizedCommand) ? normalizedCommand : path.resolve(cwd, normalizedCommand);
+    throw new Error(`Command is not executable: "${normalizedCommand}" (resolved: "${absolute}")`);
   }
-  throw new Error(`Command not found in PATH: "${command}"`);
+  throw new Error(`Command not found in PATH: "${normalizedCommand}"`);
 }
 
 export async function runChildProcess(

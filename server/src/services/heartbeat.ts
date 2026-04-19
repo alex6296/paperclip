@@ -2686,6 +2686,7 @@ export function heartbeatService(db: Db) {
   async function finalizeAgentStatus(
     agentId: string,
     outcome: "succeeded" | "failed" | "cancelled" | "timed_out",
+    opts?: { treatFailureAsIdle?: boolean },
   ) {
     const existing = await getAgent(agentId);
     if (!existing) return;
@@ -2700,7 +2701,7 @@ export function heartbeatService(db: Db) {
     const nextStatus =
       runningCount > 0
         ? "running"
-        : outcome === "succeeded" || outcome === "cancelled"
+        : outcome === "succeeded" || outcome === "cancelled" || opts?.treatFailureAsIdle
           ? "idle"
           : "error";
 
@@ -3038,6 +3039,15 @@ export function heartbeatService(db: Db) {
       const latestRun = await getLatestIssueRun(issue.companyId, issue.id);
       const latestContext = parseObject(latestRun?.contextSnapshot);
       const latestRetryReason = readNonEmptyString(latestContext.retryReason);
+
+      // Token-limit failures (context window full or usage quota hit) are transient.
+      // The session is preserved so the agent can resume once the limit resets or
+      // the session is compacted. Do not retry or escalate — just leave the issue
+      // in its current status and let the next reconcile cycle decide.
+      if (readNonEmptyString(latestRun?.errorCode) === "token_limit_exceeded") {
+        result.skipped += 1;
+        continue;
+      }
 
       if (issue.status === "todo") {
         if (!latestRun || latestRun.status === "succeeded") {
@@ -4097,7 +4107,9 @@ export function heartbeatService(db: Db) {
           }
         }
       }
-      await finalizeAgentStatus(agent.id, outcome);
+      await finalizeAgentStatus(agent.id, outcome, {
+        treatFailureAsIdle: adapterResult.errorCode === "token_limit_exceeded",
+      });
     } catch (err) {
       const message = redactCurrentUserText(
         err instanceof Error ? err.message : "Unknown adapter failure",
