@@ -29,25 +29,46 @@ their side has to do.
 
 Once `interfaces.md` and `protocols.md` are committed, create exactly these
 subtasks on your own issue (each `status: todo`, each assigned to the named
-agent) and set `blockedByIssueIds` as shown:
+agent) based on the actual change shape. Decide these four flags first:
+
+- `feChanged`: the feature changes frontend code or frontend-visible behavior.
+- `beChanged`: the feature changes backend code, APIs, data contracts, or server
+  behavior.
+- `needsIntegration`: only true when both FE and BE changed **and** there is a
+  real FE<->BE integration seam worth contract-testing.
+- `needsBlackBox`: true when an outside-in regression test would add signal for
+  this feature. Default to true for user-visible flows; omit it for purely
+  internal plumbing where a black-box test would be noise.
+
+Then create the matching subtasks and set `blockedByIssueIds` as shown:
 
 ```
-QA-BB         assignee=QA Black-Box    blockedBy: []
-QA-INT        assignee=QA Integration  blockedBy: []
-FE-ANA        assignee=FE Analyzer     blockedBy: []
-FE-DES        assignee=FE Designer     blockedBy: [FE-ANA]
-FE-IMP        assignee=FE Implementer  blockedBy: [FE-DES]
-FE-TEST       assignee=FE Tester       blockedBy: [FE-IMP]
-BE-ANA        assignee=BE Analyzer     blockedBy: []
-BE-DES        assignee=BE Designer     blockedBy: [BE-ANA]
-BE-IMP        assignee=BE Implementer  blockedBy: [BE-DES]
-BE-TEST       assignee=BE Tester       blockedBy: [BE-IMP]
-DEPLOY        assignee=Deployer        blockedBy: [QA-BB, QA-INT, FE-TEST, BE-TEST]
+QA-BB         assignee=QA Black-Box    blockedBy: []                 if needsBlackBox
+
+FE-ANA        assignee=FE Analyzer     blockedBy: []                 if feChanged
+FE-DES        assignee=FE Designer     blockedBy: [FE-ANA]          if feChanged
+FE-IMP        assignee=FE Implementer  blockedBy: [FE-DES]          if feChanged
+FE-TEST       assignee=FE Tester       blockedBy: [FE-IMP]          if feChanged
+
+BE-ANA        assignee=BE Analyzer     blockedBy: []                 if beChanged
+BE-DES        assignee=BE Designer     blockedBy: [BE-ANA]          if beChanged
+BE-IMP        assignee=BE Implementer  blockedBy: [BE-DES]          if beChanged
+BE-TEST       assignee=BE Tester       blockedBy: [BE-IMP]          if beChanged
+
+QA-INT        assignee=QA Integration  blockedBy: [FE-TEST, BE-TEST] if needsIntegration
+
+DEPLOY        assignee=Deployer        blockedBy: [all created terminal verification tasks]
 ```
 
-- If the incident is BE-only (no UI change), drop the FE-* row and the
-  FE-TEST blocker on DEPLOY.
-- If FE-only, drop the BE-* row and the BE-TEST blocker on DEPLOY.
+- `QA-INT` is **not** a parallel leaf anymore. It should only exist when both
+  FE and BE changed and the feature has a real integration contract to test.
+  When it exists, it waits for both `FE-TEST` and `BE-TEST` to pass first.
+- `DEPLOY` should only depend on the verification tasks you actually created.
+  Examples:
+  - FE-only with black-box coverage: `blockedBy: [QA-BB, FE-TEST]`
+  - BE-only without black-box coverage: `blockedBy: [BE-TEST]`
+  - FE+BE with integration + black-box: `blockedBy: [QA-BB, QA-INT]`
+    because `QA-INT` already waits on `FE-TEST` and `BE-TEST`
 - Paperclip auto-wakes dependents when all blockers hit `done` — no polling.
 
 Once subtasks are filed, set your own issue to `in_review`, comment with a

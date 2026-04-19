@@ -1,4 +1,4 @@
-import type { IssueOriginKind, RoutineVariableType } from "../constants.js";
+import type { IssueOriginKind, RoutineEventType, RoutineVariableType } from "../constants.js";
 
 export interface RoutineProjectSummary {
   id: string;
@@ -65,6 +65,8 @@ export interface RoutineTrigger {
   companyId: string;
   routineId: string;
   kind: string;
+  eventType: RoutineEventType | null;
+  eventFilters: Record<string, unknown> | null;
   label: string | null;
   enabled: boolean;
   cronExpression: string | null;

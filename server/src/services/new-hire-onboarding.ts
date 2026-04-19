@@ -3,10 +3,19 @@ import { normalizeAgentUrlKey } from "@paperclipai/shared";
 import { agentService } from "./agents.js";
 import { issueService } from "./issues.js";
 import { logActivity } from "./activity-log.js";
+import { routineService } from "./routines.js";
 
 const OPEN_ISSUE_STATUSES = "backlog,todo,in_progress,in_review,blocked";
 
 type OnboardingOwner = "coo" | "ai_resource";
+type AgentSummary = Awaited<ReturnType<ReturnType<typeof agentService>["list"]>>[number];
+
+interface HiredAgentContext {
+  name: string;
+  role: string | null;
+  title: string | null;
+  reportsToName: string | null;
+}
 
 export interface TriggerNewHireOnboardingInput {
   companyId: string;
@@ -42,12 +51,27 @@ function buildIssueTitle(hiredAgentName: string) {
   return `Onboard new hire: ${hiredAgentName}`;
 }
 
-function buildIssueDescription(owner: OnboardingOwner, hiredAgentName: string) {
+function buildHireContextLines(context: HiredAgentContext) {
+  const lines = [`New hire: ${context.name}`];
+  if (context.role) {
+    lines.push(`Role: ${context.role}`);
+  }
+  if (context.title) {
+    lines.push(`Title: ${context.title}`);
+  }
+  if (context.reportsToName) {
+    lines.push(`Reports to: ${context.reportsToName}`);
+  }
+  return lines;
+}
+
+function buildIssueDescription(owner: OnboardingOwner, context: HiredAgentContext) {
+  const hireContextLines = buildHireContextLines(context);
   if (owner === "coo") {
     return [
       "New-hire onboarding follow-up (operations lane).",
       "",
-      `New hire: ${hiredAgentName}`,
+      ...hireContextLines,
       "",
       "Checklist:",
       "- Confirm org placement and reporting chain are correct.",
@@ -58,7 +82,7 @@ function buildIssueDescription(owner: OnboardingOwner, hiredAgentName: string) {
   return [
     "New-hire onboarding follow-up (culture and instruction lane).",
     "",
-    `New hire: ${hiredAgentName}`,
+    ...hireContextLines,
     "",
     "Checklist:",
     "- Review role framing and instruction quality for alignment.",
@@ -71,14 +95,45 @@ function buildOriginId(input: TriggerNewHireOnboardingInput, ownerAgentId: strin
   return `new_hire_onboarding:${input.source}:${input.sourceId}:${input.hiredAgentId}:${ownerAgentId}`;
 }
 
+function buildHiredAgentContext(allAgents: AgentSummary[], input: TriggerNewHireOnboardingInput): HiredAgentContext {
+  const hiredAgent = allAgents.find((agent) => agent.id === input.hiredAgentId) ?? null;
+  const reportsToAgent = hiredAgent?.reportsTo
+    ? allAgents.find((agent) => agent.id === hiredAgent.reportsTo) ?? null
+    : null;
+
+  return {
+    name: hiredAgent?.name?.trim() || input.hiredAgentName,
+    role: hiredAgent?.role?.trim() || null,
+    title: hiredAgent?.title?.trim() || null,
+    reportsToName: reportsToAgent?.name?.trim() || null,
+  };
+}
+
 export async function triggerNewHireOnboarding(
   db: Db,
   input: TriggerNewHireOnboardingInput,
 ): Promise<void> {
   const agentsSvc = agentService(db);
   const issuesSvc = issueService(db);
+  const routinesSvc = routineService(db);
   const allAgents = await agentsSvc.list(input.companyId);
   const activeAgents = allAgents.filter((agent) => agent.status !== "terminated" && agent.status !== "pending_approval");
+  const hiredAgentContext = buildHiredAgentContext(allAgents, input);
+
+  await routinesSvc.fireEvent({
+    companyId: input.companyId,
+    eventType: "new_hire",
+    idempotencyKey: `new_hire:${input.source}:${input.sourceId}:${input.hiredAgentId}`,
+    payload: {
+      hiredAgentId: input.hiredAgentId,
+      hiredAgentName: hiredAgentContext.name,
+      hiredAgentRole: hiredAgentContext.role,
+      hiredAgentTitle: hiredAgentContext.title,
+      reportsToName: hiredAgentContext.reportsToName,
+      source: input.source,
+      sourceId: input.sourceId,
+    },
+  });
 
   const coo = activeAgents.find(isCooAgent) ?? null;
   const aiResource = activeAgents.find(isAiResourceAgent) ?? null;
@@ -100,11 +155,39 @@ export async function triggerNewHireOnboarding(
       includeRoutineExecutions: true,
       limit: 1,
     });
-    if (existing.length > 0) continue;
+    const title = buildIssueTitle(hiredAgentContext.name);
+    const description = buildIssueDescription(target.owner, hiredAgentContext);
+
+    if (existing.length > 0) {
+      const refreshed = await issuesSvc.update(existing[0].id, {
+        title,
+        description,
+        priority: "high",
+      });
+      if (!refreshed) continue;
+
+      await logActivity(db, {
+        companyId: input.companyId,
+        actorType: "system",
+        actorId: "new_hire_onboarding",
+        action: "agent.new_hire_onboarding_issue_refreshed",
+        entityType: "issue",
+        entityId: refreshed.id,
+        details: {
+          owner: target.owner,
+          ownerAgentId: target.agent.id,
+          hiredAgentId: input.hiredAgentId,
+          hiredAgentName: hiredAgentContext.name,
+          source: input.source,
+          sourceId: input.sourceId,
+        },
+      });
+      continue;
+    }
 
     const created = await issuesSvc.create(input.companyId, {
-      title: buildIssueTitle(input.hiredAgentName),
-      description: buildIssueDescription(target.owner, input.hiredAgentName),
+      title,
+      description,
       status: "todo",
       priority: "high",
       assigneeAgentId: target.agent.id,
@@ -123,7 +206,7 @@ export async function triggerNewHireOnboarding(
         owner: target.owner,
         ownerAgentId: target.agent.id,
         hiredAgentId: input.hiredAgentId,
-        hiredAgentName: input.hiredAgentName,
+        hiredAgentName: hiredAgentContext.name,
         source: input.source,
         sourceId: input.sourceId,
       },

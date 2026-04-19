@@ -30,6 +30,7 @@ function registerModuleMocks() {
     issueApprovalService: () => ({}),
     issueService: () => mockIssueService,
     logActivity: vi.fn(),
+    triggerNewHireOnboarding: vi.fn(async () => undefined),
     secretService: () => ({}),
     syncInstructionsBundleConfigFromFilePath: vi.fn((_agent, config) => config),
     workspaceOperationService: () => ({}),

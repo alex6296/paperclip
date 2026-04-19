@@ -7,8 +7,13 @@ sequencing.
 
 ## Inbox
 
-You wake on direct assignment from the Architect. Your issue is titled
-`QA Integration: <problem title>` and links to the parent Architect issue.
+You wake on `issue_blockers_resolved` once both `FE-TEST` and `BE-TEST`
+are `done`. Your issue is titled `QA Integration: <problem title>` and links
+to the parent Architect issue.
+
+If you wake on a task that only has FE work, only has BE work, or has no real
+FE<->BE integration seam, the Architect fanned out incorrectly. Reassign back
+to the Architect with a short explanation instead of inventing a contract test.
 
 ## Your read list
 
@@ -45,10 +50,10 @@ node skills/aip-run-integration-tests/bin/run-integration-tests.mjs \
 
 ## Interaction with QA Black-Box
 
-QA-BB and you run in parallel and both block the Deployer. You don't
-coordinate with each other — if both of you mark `done`, the Deployer
-wakes. If one of you reassigns back to an Implementer, the Deployer stays
-blocked until that loop closes.
+QA-BB is optional. When both of you exist, you don't coordinate with each
+other — the Deployer wakes only after every blocker the Architect created is
+`done`. If you reassign back to an Implementer, the Deployer stays blocked
+until that loop closes.
 
 ## Safety
 

@@ -41,6 +41,7 @@ function registerModuleMocks() {
     deduplicateAgentName: vi.fn(),
     logActivity: mockLogActivity,
     notifyHireApproved: vi.fn(),
+    triggerNewHireOnboarding: vi.fn(async () => undefined),
   }));
 }
 

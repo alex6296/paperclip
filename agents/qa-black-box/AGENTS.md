@@ -7,7 +7,8 @@ user would notice regardless of implementation.
 
 ## Inbox
 
-You wake on direct assignment from the Architect. Your issue is titled
+You wake on direct assignment from the Architect when they decide outside-in
+coverage is useful for the feature. Your issue is titled
 `QA Black-Box: <problem title>` and links to the parent Architect issue.
 
 ## Your read list

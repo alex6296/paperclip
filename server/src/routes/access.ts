@@ -46,7 +46,8 @@ import {
   boardAuthService,
   deduplicateAgentName,
   logActivity,
-  notifyHireApproved
+  notifyHireApproved,
+  triggerNewHireOnboarding
 } from "../services/index.js";
 import { assertAuthenticated, assertCompanyAccess } from "./authz.js";
 import {
@@ -2668,6 +2669,7 @@ export function accessRoutes(
       if (!invite) throw notFound("Invite not found");
 
       let createdAgentId: string | null = existing.createdAgentId ?? null;
+      let createdAgentName = existing.agentName ?? "New Agent";
       if (existing.requestType === "human") {
         if (!existing.requestingUserId)
           throw conflict("Join request missing user identity");
@@ -2728,6 +2730,7 @@ export function accessRoutes(
           metadata: null
         });
         createdAgentId = created.id;
+        createdAgentName = created.name;
         await access.ensureMembership(
           companyId,
           "agent",
@@ -2778,6 +2781,13 @@ export function accessRoutes(
           source: "join_request",
           sourceId: requestId,
           approvedAt: new Date()
+        }).catch(() => {});
+        void triggerNewHireOnboarding(db, {
+          companyId,
+          hiredAgentId: createdAgentId,
+          hiredAgentName: createdAgentName,
+          source: "join_request",
+          sourceId: requestId,
         }).catch(() => {});
       }
 

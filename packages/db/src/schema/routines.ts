@@ -56,6 +56,8 @@ export const routineTriggers = pgTable(
     companyId: uuid("company_id").notNull().references(() => companies.id, { onDelete: "cascade" }),
     routineId: uuid("routine_id").notNull().references(() => routines.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
+    eventType: text("event_type"),
+    eventFilters: jsonb("event_filters").$type<Record<string, unknown>>(),
     label: text("label"),
     enabled: boolean("enabled").notNull().default(true),
     cronExpression: text("cron_expression"),

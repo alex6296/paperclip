@@ -44,6 +44,7 @@ vi.mock("../services/index.js", () => ({
   issueApprovalService: () => ({}),
   issueService: () => ({}),
   logActivity: mockLogActivity,
+  triggerNewHireOnboarding: vi.fn(async () => undefined),
   secretService: () => mockSecretService,
   syncInstructionsBundleConfigFromFilePath: mockSyncInstructionsBundleConfigFromFilePath,
   workspaceOperationService: () => ({}),
@@ -66,6 +67,7 @@ function registerModuleMocks() {
     issueApprovalService: () => ({}),
     issueService: () => ({}),
     logActivity: mockLogActivity,
+    triggerNewHireOnboarding: vi.fn(async () => undefined),
     secretService: () => mockSecretService,
     syncInstructionsBundleConfigFromFilePath: mockSyncInstructionsBundleConfigFromFilePath,
     workspaceOperationService: () => ({}),
@@ -77,7 +79,9 @@ function registerModuleMocks() {
   }));
 }
 
-async function createApp() {
+type TestActor = Record<string, unknown>;
+
+async function createApp(actorOverride?: TestActor) {
   const [{ agentRoutes }, { errorHandler }] = await Promise.all([
     vi.importActual<typeof import("../routes/agents.js")>("../routes/agents.js"),
     vi.importActual<typeof import("../middleware/index.js")>("../middleware/index.js"),
@@ -85,13 +89,14 @@ async function createApp() {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).actor = {
+    const defaultActor: TestActor = {
       type: "board",
       userId: "local-board",
       companyIds: ["company-1"],
       source: "local_implicit",
       isInstanceAdmin: false,
     };
+    (req as any).actor = actorOverride ?? defaultActor;
     next();
   });
   app.use("/api", agentRoutes({} as any));
@@ -230,6 +235,64 @@ describe("agent instructions bundle routes", () => {
       }),
       expect.any(Object),
     );
+  });
+
+  it("allows agent-authenticated callers with agent-management permission to write bundle files", async () => {
+    mockAgentService.getById
+      .mockResolvedValueOnce(makeAgent())
+      .mockResolvedValueOnce({
+        ...makeAgent(),
+        id: "actor-agent-1",
+        role: "coo",
+        permissions: { canCreateAgents: true },
+      });
+
+    const res = await request(await createApp({
+      type: "agent",
+      agentId: "actor-agent-1",
+      companyId: "company-1",
+      runId: "run-1",
+    }))
+      .put("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle/file?companyId=company-1")
+      .send({
+        path: "AGENTS.md",
+        content: "# Updated Agent\n",
+      });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(mockAgentInstructionsService.writeFile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "11111111-1111-4111-8111-111111111111" }),
+      "AGENTS.md",
+      "# Updated Agent\n",
+      { clearLegacyPromptTemplate: false },
+    );
+  });
+
+  it("rejects agent-authenticated callers without cross-agent permission", async () => {
+    mockAgentService.getById
+      .mockResolvedValueOnce(makeAgent())
+      .mockResolvedValueOnce({
+        ...makeAgent(),
+        id: "actor-agent-2",
+        permissions: {},
+      });
+    mockAccessService.hasPermission.mockResolvedValue(false);
+
+    const res = await request(await createApp({
+      type: "agent",
+      agentId: "actor-agent-2",
+      companyId: "company-1",
+      runId: "run-2",
+    }))
+      .put("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle/file?companyId=company-1")
+      .send({
+        path: "AGENTS.md",
+        content: "# Updated Agent\n",
+      });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(403);
+    expect(res.body.error).toContain("Only CEO or agent creators can modify other agents");
+    expect(mockAgentInstructionsService.writeFile).not.toHaveBeenCalled();
   });
 
   it("preserves managed instructions config when switching adapters", async () => {

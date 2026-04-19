@@ -31,6 +31,7 @@ vi.mock("../services/index.js", () => ({
   boardAuthService: () => mockBoardAuthService,
   logActivity: mockLogActivity,
   notifyHireApproved: vi.fn(),
+  triggerNewHireOnboarding: vi.fn(async () => undefined),
   deduplicateAgentName: vi.fn((name: string) => name),
 }));
 
@@ -41,6 +42,7 @@ function registerModuleMocks() {
     boardAuthService: () => mockBoardAuthService,
     logActivity: mockLogActivity,
     notifyHireApproved: vi.fn(),
+    triggerNewHireOnboarding: vi.fn(async () => undefined),
     deduplicateAgentName: vi.fn((name: string) => name),
   }));
 }

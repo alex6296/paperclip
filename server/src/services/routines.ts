@@ -27,6 +27,8 @@ import type {
   UpdateRoutineTrigger,
 } from "@paperclipai/shared";
 import {
+  ISSUE_STATUSES,
+  ROUTINE_EVENT_TYPES,
   getBuiltinRoutineVariableValues,
   interpolateRoutineTemplate,
   stringifyRoutineVariableValue,
@@ -47,6 +49,8 @@ const OPEN_ISSUE_STATUSES = ["backlog", "todo", "in_progress", "in_review", "blo
 const LIVE_HEARTBEAT_RUN_STATUSES = ["queued", "running"];
 const TERMINAL_ISSUE_STATUSES = new Set(["done", "cancelled"]);
 const MAX_CATCH_UP_RUNS = 25;
+const ROUTINE_EVENT_TYPE_SET = new Set<string>(ROUTINE_EVENT_TYPES);
+const ISSUE_STATUS_SET = new Set<string>(ISSUE_STATUSES);
 const WEEKDAY_INDEX: Record<string, number> = {
   Sun: 0,
   Mon: 1,
@@ -249,13 +253,13 @@ function assertRoutineCanEnable(status: string, assigneeAgentId: string | null |
 }
 
 function collectProvidedRoutineVariables(
-  source: "schedule" | "manual" | "api" | "webhook",
+  source: "schedule" | "manual" | "api" | "webhook" | "event",
   payload: Record<string, unknown> | null | undefined,
   variables: Record<string, unknown> | null | undefined,
 ) {
   const nestedVariables = isPlainRecord(payload) && isPlainRecord(payload.variables) ? payload.variables : {};
   const provided = {
-    ...(source === "webhook" && payload ? payload : {}),
+    ...((source === "webhook" || source === "event") && payload ? payload : {}),
     ...nestedVariables,
     ...(variables ?? {}),
   };
@@ -266,7 +270,7 @@ function collectProvidedRoutineVariables(
 function resolveRoutineVariableValues(
   variables: RoutineVariable[],
   input: {
-    source: "schedule" | "manual" | "api" | "webhook";
+    source: "schedule" | "manual" | "api" | "webhook" | "event";
     payload?: Record<string, unknown> | null;
     variables?: Record<string, unknown> | null;
   },
@@ -307,6 +311,67 @@ function mergeRoutineRunPayload(
       ...variables,
     },
   };
+}
+
+function normalizeRoutineEventStatusFilter(
+  field: "fromStatus" | "toStatus",
+  value: unknown,
+): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string" || !ISSUE_STATUS_SET.has(value)) {
+    throw unprocessable(`Invalid ${field} filter: ${String(value)}`);
+  }
+  return value;
+}
+
+function normalizeRoutineEventConfig(
+  eventType: unknown,
+  rawFilters: unknown,
+): { eventType: string; eventFilters: Record<string, unknown> | null } {
+  if (typeof eventType !== "string" || !ROUTINE_EVENT_TYPE_SET.has(eventType)) {
+    throw unprocessable(`Invalid routine event type: ${String(eventType)}`);
+  }
+
+  const filters = isPlainRecord(rawFilters) ? rawFilters : {};
+  const filterKeys = Object.keys(filters);
+  if (eventType !== "issue_status_changed") {
+    if (filterKeys.length > 0) {
+      throw unprocessable(`Event type "${eventType}" does not support filters`);
+    }
+    return { eventType, eventFilters: null };
+  }
+
+  const unsupportedKeys = filterKeys.filter((key) => key !== "fromStatus" && key !== "toStatus");
+  if (unsupportedKeys.length > 0) {
+    throw unprocessable(`Unsupported issue_status_changed event filters: ${unsupportedKeys.join(", ")}`);
+  }
+
+  const fromStatus = normalizeRoutineEventStatusFilter("fromStatus", filters.fromStatus);
+  const toStatus = normalizeRoutineEventStatusFilter("toStatus", filters.toStatus);
+  const eventFilters = {
+    ...(fromStatus ? { fromStatus } : {}),
+    ...(toStatus ? { toStatus } : {}),
+  };
+
+  return {
+    eventType,
+    eventFilters: Object.keys(eventFilters).length > 0 ? eventFilters : null,
+  };
+}
+
+function eventTriggerMatches(
+  trigger: Pick<typeof routineTriggers.$inferSelect, "eventType" | "eventFilters">,
+  payload: Record<string, unknown> | null | undefined,
+) {
+  if (trigger.eventType !== "issue_status_changed") return true;
+  const filters = isPlainRecord(trigger.eventFilters) ? trigger.eventFilters : {};
+  const fromStatus = normalizeRoutineEventStatusFilter("fromStatus", filters.fromStatus);
+  const toStatus = normalizeRoutineEventStatusFilter("toStatus", filters.toStatus);
+  const actualFromStatus = payload && typeof payload.fromStatus === "string" ? payload.fromStatus : null;
+  const actualToStatus = payload && typeof payload.toStatus === "string" ? payload.toStatus : null;
+  if (fromStatus && fromStatus !== actualFromStatus) return false;
+  if (toStatus && toStatus !== actualToStatus) return false;
+  return true;
 }
 
 export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeupDeps } = {}) {
@@ -391,7 +456,7 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
     const map = new Map<string, RoutineTrigger[]>();
     for (const row of rows) {
       const list = map.get(row.routineId) ?? [];
-      list.push(row);
+      list.push(row as RoutineTrigger);
       map.set(row.routineId, list);
     }
     return map;
@@ -686,7 +751,7 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
   async function dispatchRoutineRun(input: {
     routine: typeof routines.$inferSelect;
     trigger: typeof routineTriggers.$inferSelect | null;
-    source: "schedule" | "manual" | "api" | "webhook";
+    source: "schedule" | "manual" | "api" | "webhook" | "event";
     payload?: Record<string, unknown> | null;
     variables?: Record<string, unknown> | null;
     projectId?: string | null;
@@ -828,7 +893,7 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
           reason: "issue_assigned",
           mutation: "create",
           contextSource: "routine.dispatch",
-          requestedByActorType: input.source === "schedule" ? "system" : undefined,
+          requestedByActorType: input.source === "schedule" || input.source === "event" ? "system" : undefined,
           rethrowOnError: true,
         });
         const updated = await finalizeRun(createdRun.id, {
@@ -865,8 +930,13 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       }
     });
 
-    if (input.source === "schedule" || input.source === "webhook") {
-      const actorId = input.source === "schedule" ? "routine-scheduler" : "routine-webhook";
+    if (input.source === "schedule" || input.source === "webhook" || input.source === "event") {
+      const actorId =
+        input.source === "schedule"
+          ? "routine-scheduler"
+          : input.source === "webhook"
+            ? "routine-webhook"
+            : "routine-event";
       try {
         await logActivity(db, {
           companyId: input.routine.companyId,
@@ -878,6 +948,7 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
           details: {
             routineId: input.routine.id,
             triggerId: input.trigger?.id ?? null,
+            eventType: input.trigger?.eventType ?? null,
             source: run.source,
             status: run.status,
           },
@@ -1133,6 +1204,8 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       let secretId: string | null = null;
       let publicId: string | null = null;
       let nextRunAt: Date | null = null;
+      let eventType: string | null = null;
+      let eventFilters: Record<string, unknown> | null = null;
 
       if (input.kind === "schedule") {
         assertScheduleCompatibleVariables(routine.variables ?? []);
@@ -1153,12 +1226,20 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
         };
       }
 
+      if (input.kind === "event") {
+        const normalizedEvent = normalizeRoutineEventConfig(input.eventType, input.eventFilters);
+        eventType = normalizedEvent.eventType;
+        eventFilters = normalizedEvent.eventFilters;
+      }
+
       const [trigger] = await db
         .insert(routineTriggers)
         .values({
           companyId: routine.companyId,
           routineId: routine.id,
           kind: input.kind,
+          eventType,
+          eventFilters,
           label: input.label ?? null,
           enabled: input.enabled ?? true,
           cronExpression: input.kind === "schedule" ? input.cronExpression : null,
@@ -1189,6 +1270,8 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
       let nextRunAt = existing.nextRunAt;
       let cronExpression = existing.cronExpression;
       let timezone = existing.timezone;
+      let eventType = existing.eventType;
+      let eventFilters = existing.eventFilters as Record<string, unknown> | null;
 
       if (existing.kind === "schedule") {
         const routine = await getRoutineById(existing.routineId);
@@ -1212,9 +1295,20 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
         }
       }
 
+      if (existing.kind === "event") {
+        const normalizedEvent = normalizeRoutineEventConfig(
+          patch.eventType === undefined ? existing.eventType : patch.eventType,
+          patch.eventFilters === undefined ? existing.eventFilters : patch.eventFilters,
+        );
+        eventType = normalizedEvent.eventType;
+        eventFilters = normalizedEvent.eventFilters;
+      }
+
       const [updated] = await db
         .update(routineTriggers)
         .set({
+          eventType,
+          eventFilters,
           label: patch.label === undefined ? existing.label : patch.label,
           enabled: patch.enabled ?? existing.enabled,
           cronExpression,
@@ -1383,6 +1477,54 @@ export function routineService(db: Db, deps: { heartbeat?: IssueAssignmentWakeup
           : null,
         idempotencyKey: input.idempotencyKey,
       });
+    },
+
+    fireEvent: async (input: {
+      companyId: string;
+      eventType: string;
+      payload?: Record<string, unknown> | null;
+      idempotencyKey?: string | null;
+    }) => {
+      const normalizedEvent = normalizeRoutineEventConfig(input.eventType, null);
+      const candidates = await db
+        .select({
+          trigger: routineTriggers,
+          routine: routines,
+        })
+        .from(routineTriggers)
+        .innerJoin(routines, eq(routineTriggers.routineId, routines.id))
+        .where(
+          and(
+            eq(routineTriggers.companyId, input.companyId),
+            eq(routineTriggers.kind, "event"),
+            eq(routineTriggers.enabled, true),
+            eq(routineTriggers.eventType, normalizedEvent.eventType),
+            eq(routines.status, "active"),
+          ),
+        )
+        .orderBy(asc(routineTriggers.createdAt), asc(routineTriggers.id));
+
+      const runs = [];
+      for (const row of candidates) {
+        if (!eventTriggerMatches(row.trigger, input.payload)) continue;
+        try {
+          const run = await dispatchRoutineRun({
+            routine: row.routine,
+            trigger: row.trigger,
+            source: "event",
+            payload: input.payload,
+            idempotencyKey: input.idempotencyKey ?? null,
+          });
+          runs.push(run);
+        } catch (err) {
+          logger.warn(
+            { err, routineId: row.routine.id, triggerId: row.trigger.id, eventType: normalizedEvent.eventType },
+            "failed to dispatch routine event trigger",
+          );
+        }
+      }
+
+      return runs;
     },
 
     listRuns: async (routineId: string, limit = 50): Promise<RoutineRunSummary[]> => {

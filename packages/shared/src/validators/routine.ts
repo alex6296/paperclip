@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
   ISSUE_PRIORITIES,
+  ISSUE_STATUSES,
   ROUTINE_CATCH_UP_POLICIES,
   ROUTINE_CONCURRENCY_POLICIES,
+  ROUTINE_EVENT_TYPES,
   ROUTINE_STATUSES,
   ROUTINE_TRIGGER_SIGNING_MODES,
   ROUTINE_VARIABLE_TYPES,
@@ -71,6 +73,35 @@ const baseTriggerSchema = z.object({
   enabled: z.boolean().optional().default(true),
 });
 
+const routineEventFiltersSchema = z.object({
+  fromStatus: z.enum(ISSUE_STATUSES).optional().nullable(),
+  toStatus: z.enum(ISSUE_STATUSES).optional().nullable(),
+}).optional().nullable();
+
+const eventTriggerSchema = baseTriggerSchema.extend({
+  kind: z.literal("event"),
+  eventType: z.enum(ROUTINE_EVENT_TYPES),
+  eventFilters: routineEventFiltersSchema,
+});
+
+function validateEventFilterCompatibility(
+  value: { eventType?: (typeof ROUTINE_EVENT_TYPES)[number] | null; eventFilters?: { fromStatus?: string | null; toStatus?: string | null } | null },
+  ctx: z.RefinementCtx,
+) {
+  const filters = value.eventFilters ?? null;
+  const hasStatusFilters = !!filters?.fromStatus || !!filters?.toStatus;
+  if (value.eventType === "issue_status_changed") {
+    return;
+  }
+  if (hasStatusFilters) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["eventFilters"],
+      message: "Status filters are only supported for issue_status_changed events",
+    });
+  }
+}
+
 export const createRoutineTriggerSchema = z.discriminatedUnion("kind", [
   baseTriggerSchema.extend({
     kind: z.literal("schedule"),
@@ -85,7 +116,12 @@ export const createRoutineTriggerSchema = z.discriminatedUnion("kind", [
   baseTriggerSchema.extend({
     kind: z.literal("api"),
   }),
-]);
+  eventTriggerSchema,
+]).superRefine((value, ctx) => {
+  if (value.kind === "event") {
+    validateEventFilterCompatibility(value, ctx);
+  }
+});
 
 export type CreateRoutineTrigger = z.infer<typeof createRoutineTriggerSchema>;
 
@@ -94,8 +130,20 @@ export const updateRoutineTriggerSchema = z.object({
   enabled: z.boolean().optional(),
   cronExpression: z.string().trim().min(1).optional().nullable(),
   timezone: z.string().trim().min(1).optional().nullable(),
+  eventType: z.enum(ROUTINE_EVENT_TYPES).optional().nullable(),
+  eventFilters: routineEventFiltersSchema,
   signingMode: z.enum(ROUTINE_TRIGGER_SIGNING_MODES).optional().nullable(),
   replayWindowSec: z.number().int().min(30).max(86_400).optional().nullable(),
+}).superRefine((value, ctx) => {
+  if (value.eventType !== undefined || value.eventFilters !== undefined) {
+    validateEventFilterCompatibility(
+      {
+        eventType: value.eventType ?? "issue_status_changed",
+        eventFilters: value.eventFilters ?? null,
+      },
+      ctx,
+    );
+  }
 });
 
 export type UpdateRoutineTrigger = z.infer<typeof updateRoutineTriggerSchema>;
