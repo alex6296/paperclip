@@ -1,80 +1,26 @@
 ---
 name: aip-deploy-ios-beta
-description: Trigger an iOS beta GitHub Actions workflow via `gh workflow run` and poll for completion. Windows-friendly stub.
+description: Deploy an iOS beta build for the Stress-Aware app by running Fastlane locally. Use this skill immediately when asked to deploy iOS beta, build iOS beta, or release iOS beta.
 ---
 
 # aip-deploy-ios-beta
 
-iOS beta builds don't run on Windows. This stub dispatches a GitHub Actions
-workflow that does the build on a macOS runner, then polls the run to
-completion so the caller can surface a pass/fail back to Paperclip.
+Runs `npx bundle fastlane ios beta` in the Stress-Aware iOS directory.
 
-Uses the GitHub CLI (`gh`). Needs `gh auth status` to be green, or
-`GH_TOKEN` in the env.
+## Action
 
-## Invocation
+When this skill is invoked, immediately run the following Bash command without asking for confirmation:
 
 ```bash
-node skills/aip-deploy-ios-beta/bin/deploy-ios-beta.mjs \
-  --ref <branch-or-sha> \
-  [--workflow ios-beta.yml] \
-  [--repo owner/name] \
-  [--poll-interval-ms 15000] \
-  [--timeout-ms 2700000]
+cd "C:/Users/Alex/Documents/GitHub/Stress-Aware/App/ios" && npx bundle fastlane ios beta
 ```
 
-Flags:
-- `--ref` **required**: branch or SHA to build.
-- `--workflow`: workflow filename (default `ios-beta.yml`). Must already
-  exist in the repo's `.github/workflows/`.
-- `--repo`: `owner/name`. Omit to infer from the current git checkout.
-- `--poll-interval-ms`: how often to poll `gh run view` (default 15s).
-- `--timeout-ms`: overall budget (default 45 min).
+Report the full output (stdout/stderr) and exit code back to the caller. Do not summarise or truncate.
 
-## Output (JSON on stdout)
+## Alternatively via the skill script
 
-```json
-{
-  "ref": "main",
-  "workflow": "ios-beta.yml",
-  "runId": 9182736452,
-  "runUrl": "https://github.com/owner/repo/actions/runs/9182736452",
-  "conclusion": "success",
-  "status": "completed",
-  "durationMs": 1342890,
-  "timedOut": false
-}
+```bash
+node "C:/Users/Alex/Documents/GitHub/AIP2/paperclip/skills/aip-deploy-ios-beta/bin/deploy-ios-beta.mjs"
 ```
 
-`conclusion` is one of `success`, `failure`, `cancelled`, `timed_out`,
-`skipped`, `neutral`, `action_required`, or `null` (if we timed out
-locally before the run finished). Exit code: `0` on `success`, `1`
-otherwise.
-
-## How it works
-
-1. `gh workflow run <workflow> --ref <ref>` dispatches the workflow.
-2. Wait ~3s for the run to appear, then `gh run list --workflow <workflow>
-   --branch <ref> --limit 1 --json databaseId,url,status,conclusion,createdAt`
-   to find the freshly-created run.
-3. Poll `gh run view <runId> --json status,conclusion,updatedAt` every
-   `--poll-interval-ms` until `status === "completed"` or the total
-   wall-clock hits `--timeout-ms`.
-
-## Typical wiring
-
-Pin into the Deployer's `desiredSkills` at hire time. In the Deployer's
-prompt:
-
-> For iOS beta: `node skills/aip-deploy-ios-beta/bin/deploy-ios-beta.mjs --ref <branch>`; paste the JSON result (especially `runUrl` and `conclusion`) as a comment on the deploy issue.
-
-## Caveats
-
-- You must create the `ios-beta.yml` workflow in the target repo yourself.
-  This CLI only dispatches it.
-- `gh run list` is not immediately consistent — we wait and retry a few
-  times before giving up. If dispatch succeeds but the run never appears,
-  the CLI exits with `conclusion: null, status: "pending"` so the operator
-  can investigate.
-- Windows paths are fine — `gh` is happy on Windows as long as the
-  terminal finds the binary on PATH.
+No flags required. Output is streamed directly to the terminal. Exit code mirrors the Fastlane process.

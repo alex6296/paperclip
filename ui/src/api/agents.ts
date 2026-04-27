@@ -48,6 +48,8 @@ export interface OrgNode {
   id: string;
   name: string;
   role: string;
+  title?: string | null;
+  capabilities?: string | null;
   status: string;
   reports: OrgNode[];
 }

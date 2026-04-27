@@ -11,7 +11,7 @@ import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
 import { useProjectOrder } from "../hooks/useProjectOrder";
 import { getRecentAssigneeIds, sortAgentsByRecency, trackRecentAssignee } from "../lib/recent-assignees";
-import { formatAssigneeUserLabel } from "../lib/assignees";
+import { buildAssigneeAgentSummary, formatAssigneeUserLabel } from "../lib/assignees";
 import { buildExecutionPolicy, stageParticipantValues } from "../lib/issue-execution-policy";
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
@@ -503,19 +503,22 @@ export function IssueProperties({
           .filter((a) => {
             if (!assigneeSearch.trim()) return true;
             const q = assigneeSearch.toLowerCase();
-            return a.name.toLowerCase().includes(q);
+            return `${a.name} ${a.role} ${a.title ?? ""} ${a.capabilities ?? ""}`.toLowerCase().includes(q);
           })
           .map((a) => (
           <button
             key={a.id}
             className={cn(
-              "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+              "flex items-start gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
               a.id === issue.assigneeAgentId && "bg-accent"
             )}
             onClick={() => { trackRecentAssignee(a.id); onUpdate({ assigneeAgentId: a.id, assigneeUserId: null }); setAssigneeOpen(false); }}
           >
             <AgentIcon icon={a.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
-            {a.name}
+            <div className="min-w-0 text-left">
+              <div className="truncate">{a.name}</div>
+              <div className="truncate text-[11px] text-muted-foreground">{buildAssigneeAgentSummary(a)}</div>
+            </div>
           </button>
         ))}
       </div>
@@ -574,7 +577,9 @@ export function IssueProperties({
         {sortedAgents
           .filter((agent) => {
             if (!search.trim()) return true;
-            return agent.name.toLowerCase().includes(search.toLowerCase());
+            return `${agent.name} ${agent.role} ${agent.title ?? ""} ${agent.capabilities ?? ""}`
+              .toLowerCase()
+              .includes(search.toLowerCase());
           })
           .map((agent) => {
             const encoded = `agent:${agent.id}`;
@@ -582,13 +587,16 @@ export function IssueProperties({
               <button
                 key={`${stageType}:${agent.id}`}
                 className={cn(
-                  "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                  "flex items-start gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
                   values.includes(encoded) && "bg-accent",
                 )}
                 onClick={() => toggleExecutionParticipant(stageType, encoded)}
               >
                 <AgentIcon icon={agent.icon} className="shrink-0 h-3 w-3 text-muted-foreground" />
-                {agent.name}
+                <div className="min-w-0 text-left">
+                  <div className="truncate">{agent.name}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">{buildAssigneeAgentSummary(agent)}</div>
+                </div>
               </button>
             );
           })}

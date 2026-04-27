@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
+import { AGENT_ROLE_LABELS } from "@paperclipai/shared";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -10,6 +11,8 @@ import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { ChevronRight, GitBranch } from "lucide-react";
 import { cn } from "../lib/utils";
+
+const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
 
 function OrgTree({
   nodes,
@@ -45,7 +48,7 @@ function OrgTreeNode({
     <div>
       <Link
         to={hrefFn(node.id)}
-        className="flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer hover:bg-accent/50 no-underline text-inherit"
+        className="flex items-start gap-2 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer hover:bg-accent/50 no-underline text-inherit"
         style={{ paddingLeft: `${depth * 16 + 12}px` }}
       >
         {hasChildren ? (
@@ -78,8 +81,16 @@ function OrgTreeNode({
                   : "bg-neutral-400"
           )}
         />
-        <span className="font-medium flex-1">{node.name}</span>
-        <span className="text-xs text-muted-foreground">{node.role}</span>
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">{node.name}</div>
+          <div className="text-xs text-muted-foreground">
+            {roleLabels[node.role] ?? node.role}
+            {node.title ? ` - ${node.title}` : ""}
+          </div>
+          {node.capabilities ? (
+            <div className="text-xs text-muted-foreground/80 line-clamp-2 mt-0.5">{node.capabilities}</div>
+          ) : null}
+        </div>
         <StatusBadge status={node.status} />
       </Link>
       {hasChildren && expanded && (

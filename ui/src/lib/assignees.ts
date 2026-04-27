@@ -9,6 +9,12 @@ export interface AssigneeOption {
   searchText?: string;
 }
 
+export interface AssigneeAgentContext {
+  role: string;
+  title?: string | null;
+  capabilities?: string | null;
+}
+
 interface CommentAssigneeSuggestionInput {
   assigneeAgentId?: string | null;
   assigneeUserId?: string | null;
@@ -79,4 +85,19 @@ export function formatAssigneeUserLabel(
   if (currentUserId && userId === currentUserId) return "You";
   if (userId === "local-board") return "Board";
   return userId.slice(0, 5);
+}
+
+export function buildAssigneeAgentSummary(agent: AssigneeAgentContext): string {
+  const roleAndTitle = [agent.role, agent.title].filter(Boolean).join(" - ").trim();
+  if (roleAndTitle && agent.capabilities) return `${roleAndTitle} - ${agent.capabilities}`;
+  if (roleAndTitle) return roleAndTitle;
+  return agent.capabilities?.trim() ?? "";
+}
+
+export function buildAssigneeAgentSearchText(
+  agent: { name: string } & AssigneeAgentContext,
+): string {
+  return [agent.name, agent.role, agent.title ?? "", agent.capabilities ?? ""]
+    .join(" ")
+    .trim();
 }

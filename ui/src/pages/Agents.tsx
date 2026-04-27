@@ -331,8 +331,13 @@ function OrgTreeNode({
           <span className="text-sm font-medium">{node.name}</span>
           <span className="text-xs text-muted-foreground ml-2">
             {roleLabels[node.role] ?? node.role}
-            {agent?.title ? ` - ${agent.title}` : ""}
+            {(node.title ?? agent?.title) ? ` - ${node.title ?? agent?.title}` : ""}
           </span>
+          {node.capabilities ? (
+            <div className="text-[11px] text-muted-foreground/80 line-clamp-1 mt-0.5">
+              {node.capabilities}
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <span className="sm:hidden">

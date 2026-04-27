@@ -7,7 +7,8 @@ import { spawn } from "node:child_process";
 
 function parseArgs(argv) {
   const out = {
-    projectId: process.env.FIREBASE_PROJECT_ID ?? null,
+    projectId: process.env.FIREBASE_PROJECT_ID ?? "stressaware",
+    location: process.env.BIGQUERY_LOCATION ?? "europe-west1",
     days: 7,
     limit: 50,
     timeoutMs: 120_000,
@@ -17,6 +18,7 @@ function parseArgs(argv) {
     const next = () => argv[++i];
     switch (a) {
       case "--project-id": out.projectId = next(); break;
+      case "--location": out.location = next(); break;
       case "--days": out.days = Number.parseInt(next(), 10); break;
       case "--limit": out.limit = Number.parseInt(next(), 10); break;
       case "--timeout-ms": out.timeoutMs = Number.parseInt(next(), 10); break;
@@ -45,6 +47,7 @@ function printHelp() {
       "Usage: crashlytics-fetch.mjs --project-id <id> [options]",
       "",
       "  --project-id <id>   Firebase project id (or FIREBASE_PROJECT_ID env)",
+      "  --location <loc>    BigQuery dataset location (e.g. europe-west1)",
       "  --days <n>          Lookback window (default 7)",
       "  --limit <n>         Max issues returned (default 50)",
       "  --timeout-ms <n>    Hard bq timeout (default 120000)",
@@ -142,6 +145,18 @@ function shapeRow(row) {
   };
 }
 
+async function setGcloudProject(projectId) {
+  return new Promise((resolve) => {
+    const child = spawn("gcloud", ["config", "set", "project", projectId], {
+      shell: true,
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    child.on("close", resolve);
+    child.on("error", resolve);
+  });
+}
+
 async function main() {
   let opts;
   try {
@@ -150,6 +165,8 @@ async function main() {
     process.stderr.write(`${err.message}\n`);
     process.exit(2);
   }
+
+  await setGcloudProject("stressaware");
 
   const query = buildQuery(opts.projectId, opts.days, opts.limit);
   let stdout;
@@ -161,6 +178,7 @@ async function main() {
         "--use_legacy_sql=false",
         `--project_id=${opts.projectId}`,
         `--max_rows=${opts.limit}`,
+        ...(opts.location ? [`--location=${opts.location}`] : []),
         // bq needs the query as a single argument. Quoting rules differ
         // between cmd.exe and POSIX shells; the portable path is to pipe
         // via stdin, but `bq query` doesn't accept stdin — we fall back on
@@ -172,6 +190,12 @@ async function main() {
       opts.timeoutMs,
     ));
   } catch (err) {
+    if (err.message.includes("does not match any table")) {
+      process.stdout.write(
+        JSON.stringify({ projectId: opts.projectId, windowDays: opts.days, issues: [], note: "No data yet — Crashlytics BigQuery export has not run yet. Check back in 24h." }) + "\n",
+      );
+      process.exit(0);
+    }
     process.stderr.write(`${err.message}\n`);
     process.exit(1);
   }

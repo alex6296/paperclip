@@ -29,7 +29,7 @@ Good for "what's actually hurting users" versus "a thing crashed once".
 ## Invocation
 
 ```bash
-node skills/aip-crashlytics-fetch/bin/crashlytics-fetch.mjs --project-id <firebase-project-id> [options]
+node skills/aip-crashlytics-fetch/bin/crashlytics-fetch.mjs
 ```
 
 ### Options

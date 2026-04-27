@@ -21,10 +21,17 @@ Wake via `issue_blockers_resolved` once FE Designer marks their issue
    **don't** improvise — reassign back to the FE Designer with the
    problem. Half a fix is worse than no fix here.
 3. Run the project's FE type-check and lint locally. Fix anything broken.
-4. Commit with a message referencing the issue id.
+4. Commit with a message referencing the issue id. Treat your branch and its
+   commit history as a release handoff artifact for the Deployer, not as
+   scratch space.
 5. **Do not** push, open a PR, or merge — the Deployer owns shipping.
-6. Comment on your issue with: branch name, commit SHA, files changed,
-   any deviations from the design and why.
+6. Comment on your issue with:
+   - branch name
+   - head commit SHA
+   - files changed
+   - FE checks you ran
+   - any deviations from the design and why
+   - any rollout or reviewer notes the Deployer must know
 
 ## Testing
 
@@ -34,7 +41,8 @@ check and fix what you broke.
 
 ## Handoff
 
-Set your issue `done`. FE Tester auto-wakes next.
+Set your issue `done` only when the branch is handoff-ready. FE Tester
+auto-wakes next.
 
 ## If the Tester kicks it back
 
@@ -46,3 +54,5 @@ branch, mark your issue `done` — FE Tester re-wakes.
 
 Never merge to `main` yourself. Never force-push. Never delete branches.
 Never touch `interfaces.md` / `protocols.md`.
+Do not leave branch identity, head commit, or handoff notes ambiguous for the
+next agent in the chain.

@@ -17,6 +17,8 @@ import { buildExecutionPolicy } from "../lib/issue-execution-policy";
 import { useToastActions } from "../context/ToastContext";
 import {
   assigneeValueFromSelection,
+  buildAssigneeAgentSearchText,
+  buildAssigneeAgentSummary,
   currentUserAssigneeOption,
   parseAssigneeValue,
 } from "../lib/assignees";
@@ -874,7 +876,7 @@ export function NewIssueDialog() {
       ).map((agent) => ({
         id: assigneeValueFromSelection({ assigneeAgentId: agent.id }),
         label: agent.name,
-        searchText: `${agent.name} ${agent.role} ${agent.title ?? ""}`,
+        searchText: buildAssigneeAgentSearchText(agent),
       })),
     ],
     [agents, currentUserId, recentAssigneeIds],
@@ -1145,10 +1147,17 @@ export function NewIssueDialog() {
                     ? (agents ?? []).find((agent) => agent.id === parseAssigneeValue(option.id).assigneeAgentId)
                     : null;
                   return (
-                    <>
+                    <div className="min-w-0 flex items-start gap-2">
                       {assignee ? <AgentIcon icon={assignee.icon} className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : null}
-                      <span className="truncate">{option.label}</span>
-                    </>
+                      <div className="min-w-0">
+                        <div className="truncate">{option.label}</div>
+                        {assignee ? (
+                          <div className="truncate text-[11px] text-muted-foreground">
+                            {buildAssigneeAgentSummary(assignee)}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   );
                 }}
               />

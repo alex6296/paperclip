@@ -255,6 +255,18 @@ async function scanPodLogs(opts) {
   return errors;
 }
 
+async function setGcloudProject(projectId) {
+  return new Promise((resolve) => {
+    const child = spawn("gcloud", ["config", "set", "project", projectId], {
+      shell: true,
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    child.on("close", resolve);
+    child.on("error", resolve);
+  });
+}
+
 async function main() {
   let opts;
   try {
@@ -263,6 +275,8 @@ async function main() {
     process.stderr.write(`${err.message}\n`);
     process.exit(2);
   }
+
+  await setGcloudProject("geometric-petal-400512");
 
   const deadline = Date.now() + opts.timeoutMs;
   const budget = () => Math.max(1_000, deadline - Date.now());

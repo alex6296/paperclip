@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   assigneeValueFromSelection,
+  buildAssigneeAgentSearchText,
+  buildAssigneeAgentSummary,
   currentUserAssigneeOption,
   formatAssigneeUserLabel,
   parseAssigneeValue,
@@ -50,6 +52,34 @@ describe("assignee selection helpers", () => {
     expect(formatAssigneeUserLabel("user-1", "user-1")).toBe("You");
     expect(formatAssigneeUserLabel("local-board", "someone-else")).toBe("Board");
     expect(formatAssigneeUserLabel("user-abcdef", "someone-else")).toBe("user-");
+  });
+
+  it("builds agent summaries with role, title, and capabilities", () => {
+    expect(
+      buildAssigneeAgentSummary({
+        role: "cto",
+        title: "Head of Engineering",
+        capabilities: "Owns technical direction and staffing.",
+      }),
+    ).toBe("cto - Head of Engineering - Owns technical direction and staffing.");
+    expect(
+      buildAssigneeAgentSummary({
+        role: "qa",
+        title: null,
+        capabilities: "Verifies shipped behavior.",
+      }),
+    ).toBe("qa - Verifies shipped behavior.");
+  });
+
+  it("includes capabilities in agent assignee search text", () => {
+    expect(
+      buildAssigneeAgentSearchText({
+        name: "Taylor",
+        role: "researcher",
+        title: "Customer Insights",
+        capabilities: "Investigates user pain points.",
+      }),
+    ).toContain("Investigates user pain points.");
   });
 
   it("suggests the last non-me commenter without changing the actual assignee encoding", () => {

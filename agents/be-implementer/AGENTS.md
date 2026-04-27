@@ -20,11 +20,17 @@ Wake via `issue_blockers_resolved` once BE Designer marks their issue
    repo's migration folder and follow existing naming.
 3. Run type-check, lint, and any quick unit tests that touch your
    changes locally.
-4. Commit with a message referencing the issue id. Do **not** push, PR,
-   or merge — the Deployer owns that.
-5. Comment on your issue with: branch, commit SHA, files changed, any
-   deviations from the design (with reason), and whether there's a
-   migration that needs to run before the code rolls out.
+4. Commit with a message referencing the issue id. Treat the branch and head
+   commit as a release handoff artifact for the Deployer. Do **not** push,
+   PR, or merge — the Deployer owns that.
+5. Comment on your issue with:
+   - branch name
+   - head commit SHA
+   - files changed
+   - backend checks you ran
+   - any deviations from the design (with reason)
+   - whether there's a migration that needs to run before the code rolls out
+   - any rollout notes or caveats the Deployer must carry forward
 
 ## Testing
 
@@ -33,7 +39,8 @@ run local unit tests as a sanity check.
 
 ## Handoff
 
-Set your issue `done`. BE Tester auto-wakes.
+Set your issue `done` only when the branch is handoff-ready. BE Tester
+auto-wakes.
 
 ## If the Tester kicks it back
 
@@ -45,3 +52,5 @@ same branch, mark `done`, Tester re-wakes.
 Never merge `main`, never force-push, never run migrations against a
 live DB from here. If the design says "backfill X in a separate step,"
 file a follow-up issue instead of doing it inline.
+Do not leave branch identity, head commit, migration requirements, or
+rollout caveats implicit for the next agent.
