@@ -2,6 +2,8 @@ import type { UsageSummary } from "@paperclipai/adapter-utils";
 import { asString, asNumber, parseObject, parseJson } from "@paperclipai/adapter-utils/server-utils";
 
 const CLAUDE_AUTH_REQUIRED_RE = /(?:not\s+logged\s+in|please\s+log\s+in|please\s+run\s+`?claude\s+login`?|login\s+required|requires\s+login|unauthorized|authentication\s+required)/i;
+const CLAUDE_QUOTA_EXHAUSTED_RE =
+  /(?:quota|rate[-\s]?limit|too many requests|\b429\b|insufficient_quota|rate_limit_exceeded|credit balance is too low|billing)/i;
 const URL_RE = /(https?:\/\/[^\s'"`<>()[\]{};,!?]+[^\s'"`<>()[\]{};,!.?:]+)/gi;
 
 export function parseClaudeStreamJson(stdout: string) {
@@ -138,6 +140,29 @@ export function detectClaudeLoginRequired(input: {
   };
 }
 
+export function detectClaudeQuotaExhausted(input: {
+  parsed: Record<string, unknown> | null;
+  stdout: string;
+  stderr: string;
+}): { exhausted: boolean; detail: string | null } {
+  const resultText = asString(input.parsed?.result, "").trim();
+  const messages = [resultText, ...extractClaudeErrorMessages(input.parsed ?? {}), input.stdout, input.stderr]
+    .join("\n")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const detail = messages.find((line) => CLAUDE_QUOTA_EXHAUSTED_RE.test(line)) ?? null;
+  return { exhausted: detail != null, detail };
+}
+
+export function describeClaudeQuotaFailure(detail: string | null | undefined): string {
+  const normalizedDetail = typeof detail === "string" ? detail.trim() : "";
+  return normalizedDetail
+    ? `Anthropic quota or rate limit exhausted: ${normalizedDetail}`
+    : "Anthropic quota or rate limit exhausted. Check Claude billing or usage limits, then retry.";
+}
+
 export function describeClaudeFailure(parsed: Record<string, unknown>): string | null {
   const subtype = asString(parsed.subtype, "");
   const resultText = asString(parsed.result, "").trim();
@@ -168,7 +193,7 @@ export function isClaudeMaxTurnsResult(parsed: Record<string, unknown> | null | 
 }
 
 const TOKEN_LIMIT_RE =
-  /context[_ ]length[_ ]exceeded|prompt[_ ]too[_ ]long|context[_ ]window[_ ](is[_ ])?(full|exceeded?)|too[_ ]many[_ ]tokens|maximum[_ ]context[_ ]length|exceeds[_ ](the[_ ])?context[_ ]window|input[_ ]is[_ ]too[_ ]long/i;
+  /context[_ ]length[_ ]exceeded|prompt[_ ]too[_ ]long|context[_ ]window[_ ](is[_ ])?(full|exceeded?)|too[_ ]many[_ ]tokens|maximum[_ ]context[_ ]length|exceeds[_ ](the[_ ])?context[_ ]window|input[_ ]is[_ ]too[_ ]long|insufficient_quota|rate_limit_exceeded|too[_ ]many[_ ]requests|\b429\b/i;
 
 export function isClaudeTokenLimitResult(
   parsed: Record<string, unknown> | null | undefined,

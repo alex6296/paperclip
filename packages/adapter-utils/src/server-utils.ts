@@ -1117,9 +1117,16 @@ export async function runChildProcess(
       "CLAUDE_CODE_ENTRYPOINT",
       "CLAUDE_CODE_SESSION",
       "CLAUDE_CODE_PARENT_SESSION",
+      "CLAUDE_CODE_SSE_PORT",
     ] as const;
     for (const key of CLAUDE_CODE_NESTING_VARS) {
       delete rawMerged[key];
+    }
+    // Also strip any other CLAUDE_CODE_* vars (except CLAUDE_CONFIG_DIR which is the legit config path)
+    for (const key of Object.keys(rawMerged)) {
+      if (key.startsWith("CLAUDE_CODE_") && key !== "CLAUDE_CONFIG_DIR") {
+        delete rawMerged[key];
+      }
     }
 
     const mergedEnv = ensurePathInEnv(rawMerged);

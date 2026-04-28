@@ -8,6 +8,7 @@ const mockIssueService = vi.hoisted(() => ({
   getById: vi.fn(),
   update: vi.fn(),
   addComment: vi.fn(),
+  assertCheckoutOwner: vi.fn(),
   findMentionedAgents: vi.fn(),
   getRelationSummaries: vi.fn(),
   listWakeableBlockedDependents: vi.fn(),
@@ -58,6 +59,7 @@ vi.mock("../services/index.js", () => ({
   projectService: () => ({}),
   routineService: () => ({
     syncRunStatusForIssue: vi.fn(async () => undefined),
+    fireEvent: vi.fn(async () => []),
   }),
   workProductService: () => ({}),
 }));
@@ -99,12 +101,13 @@ function registerModuleMocks() {
     projectService: () => ({}),
     routineService: () => ({
       syncRunStatusForIssue: vi.fn(async () => undefined),
+      fireEvent: vi.fn(async () => []),
     }),
     workProductService: () => ({}),
   }));
 }
 
-async function createApp() {
+async function createApp(actorOverride?: Record<string, unknown>) {
   const [{ errorHandler }, { issueRoutes }] = await Promise.all([
     vi.importActual<typeof import("../middleware/index.js")>("../middleware/index.js"),
     vi.importActual<typeof import("../routes/issues.js")>("../routes/issues.js"),
@@ -112,7 +115,7 @@ async function createApp() {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).actor = {
+    (req as any).actor = actorOverride ?? {
       type: "board",
       userId: "local-board",
       companyIds: ["company-1"],
@@ -143,6 +146,7 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
     executionPolicy: null,
     executionState: null,
     hiddenAt: null,
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     ...overrides,
   };
 }
@@ -155,6 +159,7 @@ describe("issue update comment wakeups", () => {
     vi.doUnmock("../middleware/index.js");
     registerModuleMocks();
     vi.resetAllMocks();
+    mockIssueService.assertCheckoutOwner.mockResolvedValue({ adoptedFromRunId: null });
     mockIssueService.findMentionedAgents.mockResolvedValue([]);
     mockIssueService.getRelationSummaries.mockResolvedValue({ blockedBy: [], blocks: [] });
     mockIssueService.listWakeableBlockedDependents.mockResolvedValue([]);
@@ -250,6 +255,60 @@ describe("issue update comment wakeups", () => {
           source: "issue.comment",
         }),
       }),
+    );
+  });
+
+  it("returns 400 instead of 500 for malformed JSON request bodies", async () => {
+    const existing = makeIssue({
+      assigneeAgentId: ASSIGNEE_AGENT_ID,
+      assigneeUserId: null,
+      status: "in_progress",
+    });
+    mockIssueService.getById.mockResolvedValue(existing);
+
+    const res = await request(await createApp())
+      .patch(`/api/issues/${existing.id}`)
+      .set("Content-Type", "application/json")
+      .send("{status:done}");
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "Invalid JSON body" });
+    expect(mockIssueService.update).not.toHaveBeenCalled();
+  });
+
+  it("agent can close its own in_progress issue without null-ref (TEM-277 regression)", async () => {
+    const existing = makeIssue({
+      assigneeAgentId: ASSIGNEE_AGENT_ID,
+      assigneeUserId: null,
+      status: "in_progress",
+    });
+    const updated = makeIssue({
+      assigneeAgentId: ASSIGNEE_AGENT_ID,
+      assigneeUserId: null,
+      status: "done",
+    });
+    mockIssueService.getById.mockResolvedValue(existing);
+    mockIssueService.update.mockResolvedValue(updated);
+
+    const agentActor = {
+      type: "agent",
+      agentId: ASSIGNEE_AGENT_ID,
+      companyId: "company-1",
+      runId: "test-run-1",
+    };
+
+    const res = await request(await createApp(agentActor))
+      .patch(`/api/issues/${existing.id}`)
+      .set("X-Paperclip-Run-Id", "test-run-1")
+      .send({ status: "done" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("done");
+    expect(mockIssueService.update).toHaveBeenCalledTimes(1);
+    expect(mockIssueService.assertCheckoutOwner).toHaveBeenCalledWith(
+      existing.id,
+      ASSIGNEE_AGENT_ID,
+      "test-run-1",
     );
   });
 });

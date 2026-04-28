@@ -26,7 +26,9 @@ import {
 import {
   parseClaudeStreamJson,
   describeClaudeFailure,
+  describeClaudeQuotaFailure,
   detectClaudeLoginRequired,
+  detectClaudeQuotaExhausted,
   isClaudeMaxTurnsResult,
   isClaudeTokenLimitResult,
   isClaudeUnknownSessionError,
@@ -454,6 +456,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   };
 
   const parseFallbackErrorMessage = (proc: RunProcessResult) => {
+    const quotaMeta = detectClaudeQuotaExhausted({
+      parsed: null,
+      stdout: proc.stdout,
+      stderr: proc.stderr,
+    });
     const stderrLine =
       proc.stderr
         .split(/\r?\n/)
@@ -462,6 +469,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
     if ((proc.exitCode ?? 0) === 0) {
       return "Failed to parse claude JSON output";
+    }
+
+    if (quotaMeta.exhausted) {
+      return describeClaudeQuotaFailure(quotaMeta.detail);
     }
 
     return stderrLine
@@ -520,6 +531,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   ): AdapterExecutionResult => {
     const { proc, parsedStream, parsed } = attempt;
     const loginMeta = detectClaudeLoginRequired({
+      parsed,
+      stdout: proc.stdout,
+      stderr: proc.stderr,
+    });
+    const quotaMeta = detectClaudeQuotaExhausted({
       parsed,
       stdout: proc.stdout,
       stderr: proc.stderr,
@@ -585,6 +601,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       : null;
     const clearSessionForMaxTurns = isClaudeMaxTurnsResult(parsed);
     const isTokenLimitFailure = !clearSessionForMaxTurns && isClaudeTokenLimitResult(parsed);
+    const structuredFailure =
+      isTokenLimitFailure && quotaMeta.exhausted
+        ? describeClaudeQuotaFailure(quotaMeta.detail)
+        : describeClaudeFailure(parsed);
 
     return {
       exitCode: proc.exitCode,
@@ -593,7 +613,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       errorMessage:
         (proc.exitCode ?? 0) === 0
           ? null
-          : describeClaudeFailure(parsed) ?? `Claude exited with code ${proc.exitCode ?? -1}`,
+          : structuredFailure ?? `Claude exited with code ${proc.exitCode ?? -1}`,
       errorCode: loginMeta.requiresLogin
         ? "claude_auth_required"
         : isTokenLimitFailure

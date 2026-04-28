@@ -92,6 +92,27 @@ console.log(JSON.stringify({ type: "result", session_id: "claude-session-2", res
   await fs.chmod(commandPath, 0o755);
 }
 
+async function writeQuotaFailureClaudeCommand(commandPath: string): Promise<void> {
+  const script = `#!/usr/bin/env node
+const mode = process.env.PAPERCLIP_TEST_MODE || "stderr";
+
+if (mode === "stderr") {
+  console.error("429 You've hit your org's monthly usage limit and overage is disabled.");
+  process.exit(1);
+}
+
+console.log(JSON.stringify({
+  type: "result",
+  subtype: "error",
+  result: "429 You've hit your org's monthly usage limit and overage is disabled.",
+  errors: ["429 You've hit your org's monthly usage limit and overage is disabled."],
+}));
+process.exit(1);
+`;
+  await fs.writeFile(commandPath, script, "utf8");
+  await fs.chmod(commandPath, 0o755);
+}
+
 async function setupExecuteEnv(
   root: string,
   options?: { commandWriter?: (commandPath: string) => Promise<void> },
@@ -120,6 +141,72 @@ async function setupExecuteEnv(
 }
 
 describe("claude execute", () => {
+  it("surfaces Anthropic quota exhaustion from stderr instead of a generic Claude exit", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-claude-exec-quota-stderr-"));
+    const { workspace, commandPath, restore } = await setupExecuteEnv(root, {
+      commandWriter: writeQuotaFailureClaudeCommand,
+    });
+    try {
+      const result = await execute({
+        runId: "run-quota-stderr",
+        agent: { id: "agent-1", companyId: "co-1", name: "Test", adapterType: "claude_local", adapterConfig: {} },
+        runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+        config: {
+          command: commandPath,
+          cwd: workspace,
+          env: { PAPERCLIP_TEST_MODE: "stderr" },
+          promptTemplate: "Do work.",
+        },
+        context: {},
+        authToken: "tok",
+        onLog: async () => {},
+        onMeta: async () => {},
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.errorMessage).toBe(
+        "Anthropic quota or rate limit exhausted: 429 You've hit your org's monthly usage limit and overage is disabled.",
+      );
+      expect(result.errorMessage).not.toContain("Claude exited with code 1");
+    } finally {
+      restore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces Anthropic quota exhaustion from structured Claude error results", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-claude-exec-quota-json-"));
+    const { workspace, commandPath, restore } = await setupExecuteEnv(root, {
+      commandWriter: writeQuotaFailureClaudeCommand,
+    });
+    try {
+      const result = await execute({
+        runId: "run-quota-json",
+        agent: { id: "agent-1", companyId: "co-1", name: "Test", adapterType: "claude_local", adapterConfig: {} },
+        runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+        config: {
+          command: commandPath,
+          cwd: workspace,
+          env: { PAPERCLIP_TEST_MODE: "json" },
+          promptTemplate: "Do work.",
+        },
+        context: {},
+        authToken: "tok",
+        onLog: async () => {},
+        onMeta: async () => {},
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.errorMessage).toBe(
+        "Anthropic quota or rate limit exhausted: 429 You've hit your org's monthly usage limit and overage is disabled.",
+      );
+      expect(result.errorCode).toBe("token_limit_exceeded");
+    } finally {
+      restore();
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   /**
    * Regression tests for https://github.com/paperclipai/paperclip/issues/2848
    *

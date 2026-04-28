@@ -195,6 +195,7 @@ export async function testEnvironment(
       });
       const detail = summarizeProbeDetail(probe.stdout, probe.stderr);
 
+
       if (probe.timedOut) {
         checks.push({
           code: "claude_hello_probe_timed_out",
