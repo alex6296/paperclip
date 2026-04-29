@@ -13,7 +13,7 @@
 //   AIP_COO_AGENT_ID           REQUIRED — the COO's agent id
 //   AIP_BUDGET_WARN_PCT        optional — budget % threshold for warn issues (default 80)
 
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -81,15 +81,33 @@ async function fetchApprovals(apiUrl, apiKey, runId, companyId) {
   return Array.isArray(data) ? data : (data.approvals ?? data.items ?? []);
 }
 
+async function fetchLatestHeartbeatRun(apiUrl, apiKey, runId, companyId, agentId) {
+  const data = await apiFetch(
+    `${apiUrl}/api/companies/${companyId}/heartbeat-runs?agentId=${encodeURIComponent(agentId)}&limit=1`,
+    apiKey,
+    runId,
+  );
+  const runs = Array.isArray(data) ? data : (data.runs ?? data.items ?? []);
+  return runs[0] ?? null;
+}
+
 function budgetPct(agent) {
   if (!agent.budgetMonthlyCents || agent.budgetMonthlyCents <= 0) return 0;
   return Math.round((agent.spentMonthlyCents ?? 0) / agent.budgetMonthlyCents * 100);
 }
 
-function detectAgentProblems(agents, budgetWarnPct) {
+export function isExpectedProviderLimitFailure(run) {
+  return typeof run?.errorCode === "string" && run.errorCode.trim() === "token_limit_exceeded";
+}
+
+export function detectAgentProblems(agents, budgetWarnPct, latestRunsByAgentId = new Map()) {
   const problems = [];
   for (const agent of agents) {
     if (agent.status === "error") {
+      const latestRun = latestRunsByAgentId.get(agent.id) ?? null;
+      if (isExpectedProviderLimitFailure(latestRun)) {
+        continue;
+      }
       problems.push({
         key: `agent-error:${agent.id}`,
         kind: "agent_error",
@@ -184,7 +202,22 @@ async function main() {
     }),
   ]);
 
-  const agentProblems = detectAgentProblems(agents, budgetWarnPct);
+  const latestRunsByAgentId = new Map();
+  const erroredAgents = agents.filter((agent) => agent.status === "error");
+  await Promise.all(erroredAgents.map(async (agent) => {
+    try {
+      latestRunsByAgentId.set(
+        agent.id,
+        await fetchLatestHeartbeatRun(apiUrl, apiKey, runId, companyId, agent.id),
+      );
+    } catch (err) {
+      process.stderr.write(
+        `latest heartbeat fetch failed for agent ${agent.id} (falling back to alerting): ${err.message}\n`,
+      );
+    }
+  }));
+
+  const agentProblems = detectAgentProblems(agents, budgetWarnPct, latestRunsByAgentId);
   const approvalItems = approvals.map(describeApproval);
   const allItems = [...agentProblems, ...approvalItems];
 
@@ -225,7 +258,9 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  process.stderr.write(`org-watcher failed: ${err.stack ?? err.message}\n`);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    process.stderr.write(`org-watcher failed: ${err.stack ?? err.message}\n`);
+    process.exit(1);
+  });
+}

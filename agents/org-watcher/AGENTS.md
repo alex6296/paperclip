@@ -14,6 +14,8 @@ script at `bin/watcher.mjs`.
 4. For each **new** problem not in that file, `POST` a new Issue to Paperclip
    assigned to the COO:
    - **Agent error state**: any agent with `status === "error"` → priority `high`
+     unless the agent's latest heartbeat run has normalized `errorCode =
+     "token_limit_exceeded"` (expected provider quota/context exhaustion)
    - **Budget overrun**: agent spent ≥ `AIP_BUDGET_WARN_PCT`% of monthly budget → `medium` (or `high` if ≥ 100%)
    - **Pending approval**: any approval awaiting action → priority `medium`
 5. Write the updated set of seen keys back to the local file.
@@ -77,5 +79,9 @@ tick — recoverable by closing them as duplicates.
 - The approvals fetch degrades gracefully: if the endpoint returns an error
   (e.g. the agent lacks permissions), it logs a warning and continues with
   agent checks only.
+- Agent error suppression is intentionally narrow: only normalized
+  `token_limit_exceeded` heartbeat failures are excluded from COO issues, so
+  auth failures, missing binaries, adapter crashes, and other runtime problems
+  still page operations.
 - Budget checks are skipped for agents with no `budgetMonthlyCents` set (0
   or missing).

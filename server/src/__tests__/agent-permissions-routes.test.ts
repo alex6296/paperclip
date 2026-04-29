@@ -23,7 +23,7 @@ const baseAgent = {
   spentMonthlyCents: 0,
   pauseReason: null,
   pausedAt: null,
-  permissions: { canCreateAgents: false },
+  permissions: { canCreateAgents: false, canManageInstructionsBundle: false },
   lastHeartbeatAt: null,
   metadata: null,
   createdAt: new Date("2026-03-19T00:00:00.000Z"),
@@ -583,6 +583,36 @@ describe("agent permission routes", () => {
     );
     expect(res.body.access.canAssignTasks).toBe(true);
     expect(res.body.access.taskAssignSource).toBe("agent_creator");
+  });
+
+  it("forwards instructions bundle management permission updates", async () => {
+    mockAgentService.updatePermissions.mockResolvedValue({
+      ...baseAgent,
+      permissions: { canCreateAgents: false, canManageInstructionsBundle: true },
+    });
+
+    const app = await createApp({
+      type: "board",
+      userId: "board-user",
+      source: "local_implicit",
+      isInstanceAdmin: true,
+      companyIds: [companyId],
+    });
+
+    const res = await request(app)
+      .patch(`/api/agents/${agentId}/permissions`)
+      .send({ canCreateAgents: false, canAssignTasks: false, canManageInstructionsBundle: true });
+
+    expect(res.status).toBe(200);
+    expect(mockAgentService.updatePermissions).toHaveBeenCalledWith(
+      agentId,
+      expect.objectContaining({
+        canCreateAgents: false,
+        canAssignTasks: false,
+        canManageInstructionsBundle: true,
+      }),
+    );
+    expect(res.body.permissions.canManageInstructionsBundle).toBe(true);
   });
 
   it("exposes a dedicated agent route for the inbox mine view", async () => {

@@ -5,6 +5,10 @@
 
 import { spawn } from "node:child_process";
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function parseArgs(argv) {
   const out = {
     projectId: process.env.FIREBASE_PROJECT_ID ?? "stressaware",
@@ -115,6 +119,38 @@ function execBq(args, timeoutMs) {
   });
 }
 
+function shouldRetryBqError(message) {
+  const text = String(message ?? "").toLowerCase();
+  return (
+    text.includes("nameresolutionerror") ||
+    text.includes("failed to resolve") ||
+    text.includes("temporary failure in name resolution") ||
+    text.includes("max retries exceeded") ||
+    text.includes("httpsconnectionpool(host='oauth2.googleapis.com'") ||
+    text.includes("problem refreshing your current auth tokens")
+  );
+}
+
+async function execBqWithRetry(args, timeoutMs) {
+  const retryDelaysMs = [2_000, 5_000];
+  let lastError = null;
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+    try {
+      return await execBq(args, timeoutMs);
+    } catch (err) {
+      lastError = err;
+      if (!shouldRetryBqError(err?.message) || attempt === retryDelaysMs.length) {
+        throw err;
+      }
+      process.stderr.write(
+        `bq transient failure on attempt ${attempt + 1}; retrying in ${retryDelaysMs[attempt]}ms\n`,
+      );
+      await sleep(retryDelaysMs[attempt]);
+    }
+  }
+  throw lastError ?? new Error("bq failed without an error");
+}
+
 function severityFromType(type) {
   const t = (type ?? "").toUpperCase();
   if (t.includes("FATAL") && !t.includes("NON")) return "critical";
@@ -166,12 +202,12 @@ async function main() {
     process.exit(2);
   }
 
-  await setGcloudProject("stressaware");
+  await setGcloudProject(opts.projectId);
 
   const query = buildQuery(opts.projectId, opts.days, opts.limit);
   let stdout;
   try {
-    ({ stdout } = await execBq(
+    ({ stdout } = await execBqWithRetry(
       [
         "query",
         "--format=json",

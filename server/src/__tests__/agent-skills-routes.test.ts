@@ -461,17 +461,20 @@ describe("agent skill routes", () => {
 
     expect([200, 201], JSON.stringify(res.body)).toContain(res.status);
     await vi.waitFor(() => {
-      expect(mockAgentInstructionsService.materializeManagedBundle).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "11111111-1111-4111-8111-111111111111",
-          role: "engineer",
-          adapterType: "claude_local",
-        }),
-        expect.objectContaining({
-          "AGENTS.md": expect.stringContaining("Keep the work moving until it's done."),
-        }),
-        { entryFile: "AGENTS.md", replaceExisting: false },
-      );
+        expect(mockAgentInstructionsService.materializeManagedBundle).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: "11111111-1111-4111-8111-111111111111",
+            role: "engineer",
+            adapterType: "claude_local",
+          }),
+          expect.objectContaining({
+            "AGENTS.md": expect.stringContaining("Keep the work moving until it's done."),
+            "HEARTBEAT.md": expect.stringContaining("Agent Heartbeat Checklist"),
+            "SOUL.md": expect.stringContaining("Agent Persona"),
+            "TOOLS.md": expect.stringContaining("# Tools"),
+          }),
+          { entryFile: "AGENTS.md", replaceExisting: false },
+        );
     });
   });
 

@@ -7,6 +7,7 @@ Audience: Product and engineering
 This document explains how Paperclip interprets issue assignment, issue status, execution runs, wakeups, parent/sub-issue structure, and blocker relationships.
 
 `doc/SPEC-implementation.md` remains the V1 contract. This document is the detailed execution model behind that contract.
+For operator-facing continuity incident classes, see `doc/continuity-failure-taxonomy.md`.
 
 ## 1. Core Model
 

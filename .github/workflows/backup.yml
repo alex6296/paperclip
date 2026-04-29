@@ -1,0 +1,34 @@
+name: Backup pre-merge state
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create pre-merge backup ref
+        run: |
+          BEFORE="${{ github.event.before }}"
+          # Skip the initial push (no prior commit)
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "Initial push — no previous state to back up."
+            exit 0
+          fi
+          DATE="$(date -u +%Y-%m-%d)"
+          SHORT="${BEFORE:0:7}"
+          REF="backup/pre-pr/${DATE}-${SHORT}"
+          git push origin "${BEFORE}:refs/heads/${REF}"
+          echo "Created backup ref: ${REF} -> ${BEFORE}"

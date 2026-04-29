@@ -660,9 +660,12 @@ export function agentRoutes(db: Db) {
       actorAgent.id,
       "agents:create",
     );
-    if (allowedByGrant || canCreateAgents(actorAgent)) return;
+    const canManageBundle = Boolean(
+      (actorAgent.permissions as Record<string, unknown> | null | undefined)?.canManageInstructionsBundle,
+    );
+    if (allowedByGrant || canCreateAgents(actorAgent) || canManageBundle) return;
     throw forbidden(
-      "Only CEO or agent creators can modify other agents' instructions path or bundle configuration",
+      "Only CEO, agent creators, or agents with the instructions bundle management permission can modify other agents' instructions path or bundle configuration",
     );
   }
 
@@ -1708,6 +1711,7 @@ export function agentRoutes(db: Db) {
       details: {
         canCreateAgents: agent.permissions?.canCreateAgents ?? false,
         canAssignTasks: effectiveCanAssignTasks,
+        canManageInstructionsBundle: agent.permissions?.canManageInstructionsBundle ?? false,
       },
     });
 

@@ -520,14 +520,24 @@ export function agentService(db: Db) {
       return updated ? normalizeAgentRow(updated) : null;
     },
 
-    updatePermissions: async (id: string, permissions: { canCreateAgents: boolean }) => {
+    updatePermissions: async (
+      id: string,
+      permissions: { canCreateAgents: boolean; canManageInstructionsBundle?: boolean },
+    ) => {
       const existing = await getById(id);
       if (!existing) return null;
+
+      // Merge: preserve existing values for fields not explicitly provided
+      const existingNorm = normalizeAgentPermissions(existing.permissions, existing.role);
+      const merged = normalizeAgentPermissions(
+        { ...existingNorm, ...Object.fromEntries(Object.entries(permissions).filter(([, v]) => v !== undefined)) },
+        existing.role,
+      );
 
       const updated = await db
         .update(agents)
         .set({
-          permissions: normalizeAgentPermissions(permissions, existing.role),
+          permissions: merged,
           updatedAt: new Date(),
         })
         .where(eq(agents.id, id))

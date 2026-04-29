@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { runChildProcess } from "./server-utils.js";
+import { readInstructionsBundle, runChildProcess } from "./server-utils.js";
 
 function isPidAlive(pid: number) {
   try {
@@ -147,6 +147,36 @@ describe("runChildProcess", () => {
       expect(result.stdout.replace(/\r?\n$/, "")).toBe("hello from quoted cmd shim");
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("readInstructionsBundle", () => {
+  it("loads sibling companion files into the injected instructions contents", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-instructions-bundle-"));
+    const entryPath = path.join(root, "AGENTS.md");
+
+    try {
+      await fs.writeFile(entryPath, "# Agent\nPrimary instructions.\n", "utf8");
+      await fs.writeFile(path.join(root, "HEARTBEAT.md"), "# Heartbeat\nLoop.\n", "utf8");
+      await fs.writeFile(path.join(root, "SOUL.md"), "# Soul\nIdentity.\n", "utf8");
+
+      const bundle = await readInstructionsBundle(entryPath);
+
+      expect(bundle.entryFilePath).toBe(entryPath);
+      expect(bundle.baseDir).toBe(root);
+      expect(bundle.loadedFiles).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md"]);
+      expect(bundle.contents).toContain("# Agent\nPrimary instructions.");
+      expect(bundle.contents).toContain(
+        "The following companion instruction files were loaded from the same agent instruction bundle directory and are active for this run.",
+      );
+      expect(bundle.contents).toContain("Companion instruction file: ./HEARTBEAT.md");
+      expect(bundle.contents).toContain("# Heartbeat\nLoop.");
+      expect(bundle.contents).toContain("Companion instruction file: ./SOUL.md");
+      expect(bundle.contents).toContain("# Soul\nIdentity.");
+      expect(bundle.contents).not.toContain("./TOOLS.md");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
     }
   });
 });

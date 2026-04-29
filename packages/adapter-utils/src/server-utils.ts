@@ -217,6 +217,64 @@ export function joinPromptSections(
     .join(separator);
 }
 
+const DEFAULT_INSTRUCTIONS_COMPANION_FILES = [
+  "HEARTBEAT.md",
+  "SOUL.md",
+  "TOOLS.md",
+] as const;
+
+export interface LoadedInstructionsBundle {
+  entryFilePath: string;
+  baseDir: string;
+  loadedFiles: string[];
+  contents: string;
+}
+
+export async function readInstructionsBundle(
+  instructionsFilePath: string,
+  options?: { companionFiles?: readonly string[] },
+): Promise<LoadedInstructionsBundle> {
+  const baseDir = path.dirname(instructionsFilePath);
+  const entryFileName = path.basename(instructionsFilePath);
+  const loadedFiles = [entryFileName];
+  const entryContents = await fs.readFile(instructionsFilePath, "utf8");
+  const companionSections: string[] = [];
+  const companionFiles = options?.companionFiles ?? DEFAULT_INSTRUCTIONS_COMPANION_FILES;
+
+  for (const companionFile of companionFiles) {
+    if (companionFile === entryFileName) continue;
+    const companionPath = path.join(baseDir, companionFile);
+    try {
+      const companionContents = await fs.readFile(companionPath, "utf8");
+      loadedFiles.push(companionFile);
+      companionSections.push(
+        `Companion instruction file: ./${companionFile}\n\n${companionContents.trimEnd()}`,
+      );
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      if (code === "ENOENT" || code === "ENOTDIR") continue;
+      throw err;
+    }
+  }
+
+  const contents = joinPromptSections([
+    entryContents,
+    companionSections.length > 0
+      ? joinPromptSections([
+        "The following companion instruction files were loaded from the same agent instruction bundle directory and are active for this run.",
+        ...companionSections,
+      ])
+      : "",
+  ]);
+
+  return {
+    entryFilePath: instructionsFilePath,
+    baseDir,
+    loadedFiles,
+    contents,
+  };
+}
+
 type PaperclipWakeIssue = {
   id: string | null;
   identifier: string | null;

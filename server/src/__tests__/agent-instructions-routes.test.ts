@@ -268,6 +268,38 @@ describe("agent instructions bundle routes", () => {
     );
   });
 
+  it("allows agent-authenticated callers with canManageInstructionsBundle permission to write bundle files", async () => {
+    mockAgentService.getById
+      .mockResolvedValueOnce(makeAgent())
+      .mockResolvedValueOnce({
+        ...makeAgent(),
+        id: "actor-agent-3",
+        role: "coo",
+        permissions: { canManageInstructionsBundle: true },
+      });
+    mockAccessService.hasPermission.mockResolvedValue(false);
+
+    const res = await request(await createApp({
+      type: "agent",
+      agentId: "actor-agent-3",
+      companyId: "company-1",
+      runId: "run-3",
+    }))
+      .put("/api/agents/11111111-1111-4111-8111-111111111111/instructions-bundle/file?companyId=company-1")
+      .send({
+        path: "AGENTS.md",
+        content: "# Updated Agent\n",
+      });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(mockAgentInstructionsService.writeFile).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "11111111-1111-4111-8111-111111111111" }),
+      "AGENTS.md",
+      "# Updated Agent\n",
+      { clearLegacyPromptTemplate: false },
+    );
+  });
+
   it("rejects agent-authenticated callers without cross-agent permission", async () => {
     mockAgentService.getById
       .mockResolvedValueOnce(makeAgent())
@@ -291,7 +323,7 @@ describe("agent instructions bundle routes", () => {
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(403);
-    expect(res.body.error).toContain("Only CEO or agent creators can modify other agents");
+    expect(res.body.error).toContain("Only CEO, agent creators, or agents with the instructions bundle management permission");
     expect(mockAgentInstructionsService.writeFile).not.toHaveBeenCalled();
   });
 

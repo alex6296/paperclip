@@ -20,6 +20,34 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate branch name
+        run: |
+          branch="${{ github.head_ref }}"
+          # Allow the automated lockfile branch
+          if [ "$branch" = "chore/refresh-lockfile" ]; then exit 0; fi
+          # Allow Dependabot and GitHub Actions auto-branches
+          if echo "$branch" | grep -Eq '^(dependabot/|gh-readonly-queue/)'; then exit 0; fi
+          # Allow conventional-prefix branches: feature/, fix/, hotfix/, chore/, refactor/, docs/, test/, ci/, build/, perf/, style/, revert/
+          if echo "$branch" | grep -Eq '^(feature|fix|hotfix|chore|refactor|docs|test|ci|build|perf|style|revert)/'; then exit 0; fi
+          # Allow existing-convention branches: PREFIX-NUMBER-slug (e.g. PAP-123-my-feature)
+          if echo "$branch" | grep -Eq '^[A-Z]+-[0-9]+-'; then exit 0; fi
+          echo "::error::Branch name '${branch}' does not follow naming conventions."
+          echo "Use: feature/<slug>, fix/<slug>, chore/<slug>, refactor/<slug>, etc."
+          echo "Or the legacy form: PREFIX-NUMBER-slug (e.g. TEM-260-my-feature)"
+          exit 1
+
+      - name: Validate PR title
+        run: |
+          title="${{ github.event.pull_request.title }}"
+          # Allow ticket-prefix titles: TEM-123: description or PAP-456: description
+          if echo "$title" | grep -Eq '^[A-Z]+-[0-9]+: .'; then exit 0; fi
+          # Allow conventional-commit titles: feat: / fix: / chore: / refactor: / docs: / test: / style: / ci: / perf: / build: / revert:
+          if echo "$title" | grep -Eq '^(feat|fix|hotfix|chore|refactor|docs|test|ci|build|perf|style|revert)(\([^)]+\))?: .'; then exit 0; fi
+          echo "::error::PR title '${title}' does not match required format."
+          echo "Use a ticket prefix:        TEM-123: My feature description"
+          echo "Or a conventional-commit:   feat: my feature description"
+          exit 1
+
       - name: Block manual lockfile edits
         if: github.head_ref != 'chore/refresh-lockfile'
         run: |

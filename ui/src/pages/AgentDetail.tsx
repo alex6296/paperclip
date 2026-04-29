@@ -624,6 +624,7 @@ export function AgentDetail() {
   const { closePanel } = usePanel();
   const { openNewIssue } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const { pushToast } = useToastActions();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [actionError, setActionError] = useState<string | null>(null);
@@ -839,6 +840,7 @@ export function AgentDetail() {
       agentsApi.updatePermissions(agentLookupRef, permissions, resolvedCompanyId ?? undefined),
     onSuccess: () => {
       setActionError(null);
+      pushToast({ title: "Permissions saved", tone: "success" });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(routeAgentRef) });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentLookupRef) });
       if (resolvedCompanyId) {
@@ -846,7 +848,9 @@ export function AgentDetail() {
       }
     },
     onError: (err) => {
-      setActionError(err instanceof Error ? err.message : "Failed to update permissions");
+      const message = err instanceof Error ? err.message : "Failed to update permissions";
+      setActionError(message);
+      pushToast({ title: "Failed to save permissions", body: message, tone: "error" });
     },
   });
 
@@ -1590,6 +1594,7 @@ function ConfigurationTab({
   }, [onSavingChange, isConfigSaving]);
 
   const canCreateAgents = Boolean(agent.permissions?.canCreateAgents);
+  const canManageInstructionsBundle = Boolean(agent.permissions?.canManageInstructionsBundle);
   const canAssignTasks = Boolean(agent.access?.canAssignTasks);
   const taskAssignSource = agent.access?.taskAssignSource ?? "none";
   const taskAssignLocked = agent.role === "ceo" || canCreateAgents;
@@ -1635,6 +1640,7 @@ function ConfigurationTab({
                 updatePermissions.mutate({
                   canCreateAgents: !canCreateAgents,
                   canAssignTasks: !canCreateAgents ? true : canAssignTasks,
+                  canManageInstructionsBundle,
                 })
               }
               disabled={updatePermissions.isPending}
@@ -1653,9 +1659,29 @@ function ConfigurationTab({
                 updatePermissions.mutate({
                   canCreateAgents,
                   canAssignTasks: !canAssignTasks,
+                  canManageInstructionsBundle,
                 })
               }
               disabled={updatePermissions.isPending || taskAssignLocked}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4 text-sm">
+            <div className="space-y-1">
+              <div>Can manage instruction bundles</div>
+              <p className="text-xs text-muted-foreground">
+                Lets this agent modify another agent&apos;s instruction bundle or path, even without CEO or creator authority.
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={canManageInstructionsBundle}
+              onCheckedChange={() =>
+                updatePermissions.mutate({
+                  canCreateAgents,
+                  canAssignTasks,
+                  canManageInstructionsBundle: !canManageInstructionsBundle,
+                })
+              }
+              disabled={updatePermissions.isPending}
             />
           </div>
         </div>
