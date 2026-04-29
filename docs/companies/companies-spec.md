@@ -70,6 +70,7 @@ skills/<slug>/SKILL.md
 
 HEARTBEAT.md
 SOUL.md
+MACHINE.md
 TOOLS.md
 README.md
 assets/

@@ -220,6 +220,7 @@ export function joinPromptSections(
 const DEFAULT_INSTRUCTIONS_COMPANION_FILES = [
   "HEARTBEAT.md",
   "SOUL.md",
+  "MACHINE.md",
   "TOOLS.md",
 ] as const;
 

@@ -416,7 +416,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         `The above agent instructions were loaded from ${instructionsFilePath}. ` +
         `Resolve any relative file references from ${instructionsDir}. ` +
         `This base directory is authoritative for sibling instruction files such as ` +
-        `./HEARTBEAT.md, ./SOUL.md, and ./TOOLS.md; do not resolve those from the parent agent directory.\n\n`;
+        `./HEARTBEAT.md, ./SOUL.md, ./MACHINE.md, and ./TOOLS.md; do not resolve those from the parent agent directory.\n\n`;
       instructionsChars = instructionsPrefix.length;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);

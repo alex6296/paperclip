@@ -278,7 +278,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         `The above agent instructions were loaded from ${resolvedInstructionsFilePath}. ` +
         `Resolve any relative file references from ${instructionsFileDir}. ` +
         `This base directory is authoritative for sibling instruction files such as ` +
-        `./HEARTBEAT.md, ./SOUL.md, and ./TOOLS.md; do not resolve those from the parent agent directory.\n\n` +
+        `./HEARTBEAT.md, ./SOUL.md, ./MACHINE.md, and ./TOOLS.md; do not resolve those from the parent agent directory.\n\n` +
         `You are agent {{agent.id}} ({{agent.name}}). Continue your Paperclip work.`;
     } catch (err) {
       instructionsReadFailed = true;

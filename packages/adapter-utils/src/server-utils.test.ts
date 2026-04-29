@@ -160,12 +160,13 @@ describe("readInstructionsBundle", () => {
       await fs.writeFile(entryPath, "# Agent\nPrimary instructions.\n", "utf8");
       await fs.writeFile(path.join(root, "HEARTBEAT.md"), "# Heartbeat\nLoop.\n", "utf8");
       await fs.writeFile(path.join(root, "SOUL.md"), "# Soul\nIdentity.\n", "utf8");
+      await fs.writeFile(path.join(root, "MACHINE.md"), "# Machine\nControl surface.\n", "utf8");
 
       const bundle = await readInstructionsBundle(entryPath);
 
       expect(bundle.entryFilePath).toBe(entryPath);
       expect(bundle.baseDir).toBe(root);
-      expect(bundle.loadedFiles).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md"]);
+      expect(bundle.loadedFiles).toEqual(["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "MACHINE.md"]);
       expect(bundle.contents).toContain("# Agent\nPrimary instructions.");
       expect(bundle.contents).toContain(
         "The following companion instruction files were loaded from the same agent instruction bundle directory and are active for this run.",
@@ -174,6 +175,8 @@ describe("readInstructionsBundle", () => {
       expect(bundle.contents).toContain("# Heartbeat\nLoop.");
       expect(bundle.contents).toContain("Companion instruction file: ./SOUL.md");
       expect(bundle.contents).toContain("# Soul\nIdentity.");
+      expect(bundle.contents).toContain("Companion instruction file: ./MACHINE.md");
+      expect(bundle.contents).toContain("# Machine\nControl surface.");
       expect(bundle.contents).not.toContain("./TOOLS.md");
     } finally {
       await fs.rm(root, { recursive: true, force: true });
