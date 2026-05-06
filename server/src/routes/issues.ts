@@ -1392,9 +1392,14 @@ export function issueRoutes(
       }).catch((err) => logger.warn({ err, issueId: issue.id }, "failed to fire issue_assigned routine event"));
     }
 
+    const createHasUnresolvedBlockers = issue.assigneeAgentId
+      ? (await svc.getRelationSummaries(issue.id)).blockedBy.some((relation) => relation.status !== "done")
+      : false;
+
     void queueIssueAssignmentWakeup({
       heartbeat,
       issue,
+      hasUnresolvedBlockers: createHasUnresolvedBlockers,
       reason: "issue_assigned",
       mutation: "create",
       contextSource: "issue.create",
@@ -1858,9 +1863,15 @@ export function issueRoutes(
         }).catch((err) => logger.warn({ err, issueId: issue.id }, "failed to fire issue_status_changed routine event"));
       }
 
+      let assigneeWakeBlockedByDependencies = false;
+      if (assigneeChanged && issue.assigneeAgentId) {
+        const blockerRelations = updatedRelations ?? (await svc.getRelationSummaries(issue.id));
+        assigneeWakeBlockedByDependencies = blockerRelations.blockedBy.some((relation) => relation.status !== "done");
+      }
+
       if (executionStageWakeup) {
         addWakeup(executionStageWakeup.agentId, executionStageWakeup.wakeup);
-      } else if (assigneeChanged && issue.assigneeAgentId && issue.status !== "backlog") {
+      } else if (assigneeChanged && issue.assigneeAgentId && issue.status !== "backlog" && !assigneeWakeBlockedByDependencies) {
         addWakeup(issue.assigneeAgentId, {
           source: "assignment",
           triggerDetail: "system",
