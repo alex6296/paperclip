@@ -39,8 +39,8 @@ release approval.
 ## Fanout
 
 Once `interfaces.md` and `protocols.md` are committed, create exactly these
-subtasks on your own issue (each `status: todo`, each assigned to the named
-agent) based on the actual change shape. Decide these four flags first:
+subtasks on your own issue (assigned to the named agent) based on the actual
+change shape. Decide these four flags first:
 
 - `feChanged`: the feature changes frontend code or frontend-visible behavior.
 - `beChanged`: the feature changes backend code, APIs, data contracts, or server
@@ -54,26 +54,29 @@ agent) based on the actual change shape. Decide these four flags first:
 Then create the matching subtasks and set `blockedByIssueIds` as shown:
 
 ```
-QA-BB         assignee=QA Black-Box    blockedBy: []                 if needsBlackBox
+QA-BB         assignee=QA Black-Box    status: todo     blockedBy: []                  if needsBlackBox
 
-FE-ANA        assignee=FE Analyzer     blockedBy: []                 if feChanged
-FE-DES        assignee=FE Designer     blockedBy: [FE-ANA]          if feChanged
-FE-IMP        assignee=FE Implementer  blockedBy: [FE-DES]          if feChanged
-FE-TEST       assignee=FE Tester       blockedBy: [FE-IMP]          if feChanged
+FE-ANA        assignee=FE Analyzer     status: todo     blockedBy: []                  if feChanged
+FE-DES        assignee=FE Designer     status: blocked  blockedBy: [FE-ANA]            if feChanged
+FE-IMP        assignee=FE Implementer  status: blocked  blockedBy: [FE-DES]            if feChanged
+FE-TEST       assignee=FE Tester       status: blocked  blockedBy: [FE-IMP]            if feChanged
 
-BE-ANA        assignee=BE Analyzer     blockedBy: []                 if beChanged
-BE-DES        assignee=BE Designer     blockedBy: [BE-ANA]          if beChanged
-BE-IMP        assignee=BE Implementer  blockedBy: [BE-DES]          if beChanged
-BE-TEST       assignee=BE Tester       blockedBy: [BE-IMP]          if beChanged
+BE-ANA        assignee=BE Analyzer     status: todo     blockedBy: []                  if beChanged
+BE-DES        assignee=BE Designer     status: blocked  blockedBy: [BE-ANA]            if beChanged
+BE-IMP        assignee=BE Implementer  status: blocked  blockedBy: [BE-DES]            if beChanged
+BE-TEST       assignee=BE Tester       status: blocked  blockedBy: [BE-IMP]            if beChanged
 
-QA-INT        assignee=QA Integration  blockedBy: [FE-TEST, BE-TEST] if needsIntegration
+QA-INT        assignee=QA Integration  status: blocked  blockedBy: [FE-TEST, BE-TEST]  if needsIntegration
 
-DEPLOY        assignee=Deployer        blockedBy: [all created terminal verification tasks]
+DEPLOY        assignee=Deployer        status: blocked  blockedBy: [all created terminal verification tasks]
 ```
 
 - `QA-INT` is **not** a parallel leaf anymore. It should only exist when both
   FE and BE changed and the feature has a real integration contract to test.
   When it exists, it waits for both `FE-TEST` and `BE-TEST` to pass first.
+- Sequential-lane rule: analyzer starts as `todo`; all downstream lane links
+  (`DES -> IMP -> TEST`) must start as `blocked` with explicit
+  `blockedByIssueIds` so the chain advances via `issue_blockers_resolved`.
 - `DEPLOY` should only depend on the verification tasks you actually created.
   Examples:
   - FE-only with black-box coverage: `blockedBy: [QA-BB, FE-TEST]`

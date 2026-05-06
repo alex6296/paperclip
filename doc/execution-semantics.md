@@ -75,6 +75,8 @@ This is the right state for:
 
 Execution work is paused because the next move belongs to a reviewer or approver, not the current executor.
 
+Do not use `in_review` as a generic completion or routing status. If a routing, design, or manager task finished by producing handoff artifacts or child issues, it should normally move to `done` unless a specific reviewer, approver, or board user has been named as the next actor.
+
 ### `done`
 
 The work is complete and terminal.

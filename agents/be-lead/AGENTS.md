@@ -35,10 +35,13 @@ You do not own:
 
 1. Read the parent Architect issue plus `interfaces.md` and `protocols.md`.
 2. Create BE subtasks on your issue:
-   - `BE-ANA` -> BE Analyzer
-   - `BE-DES` -> BE Designer, blocked by `BE-ANA`
-   - `BE-IMP` -> BE Implementer, blocked by `BE-DES`
-   - `BE-TEST` -> BE Tester, blocked by `BE-IMP`
+   - `BE-ANA` -> BE Analyzer, `status: todo`, `blockedByIssueIds: []`
+   - `BE-DES` -> BE Designer, `status: blocked`, `blockedByIssueIds: [BE-ANA]`
+   - `BE-IMP` -> BE Implementer, `status: blocked`, `blockedByIssueIds: [BE-DES]`
+   - `BE-TEST` -> BE Tester, `status: blocked`, `blockedByIssueIds: [BE-IMP]`
+   Keep this strictly sequential. Only the first step (`BE-ANA`) starts as
+   actionable; all later steps start blocked and should wake on
+   `issue_blockers_resolved`.
 3. Keep your own lane issue open while those subtasks run.
 4. Own BE-internal routing. Send work back down the BE chain when analysis,
    design, implementation, or test output is not yet good enough.
