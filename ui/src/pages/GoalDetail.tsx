@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { goalsApi } from "../api/goals";
+import { ApiError } from "../api/client";
 import { projectsApi } from "../api/projects";
 import { assetsApi } from "../api/assets";
 import { usePanel } from "../context/PanelContext";
@@ -53,6 +54,7 @@ export function GoalDetail() {
   const { openPanel, closePanel, panelVisible, setPanelVisible } = usePanel();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const {
     data: goal,
@@ -86,6 +88,7 @@ export function GoalDetail() {
     mutationFn: (data: Record<string, unknown>) =>
       goalsApi.update(goalId!, data),
     onSuccess: () => {
+      setUpdateError(null);
       queryClient.invalidateQueries({
         queryKey: queryKeys.goals.detail(goalId!)
       });
@@ -94,7 +97,15 @@ export function GoalDetail() {
           queryKey: queryKeys.goals.list(resolvedCompanyId)
         });
       }
-    }
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 422) {
+        const body = err.body as { error?: string } | null;
+        setUpdateError(body?.error ?? "Validation failed");
+      } else {
+        setUpdateError((err as Error).message ?? "Failed to update");
+      }
+    },
   });
 
   const uploadImage = useMutation({
@@ -129,11 +140,12 @@ export function GoalDetail() {
         <GoalProperties
           goal={goal}
           onUpdate={(data) => updateGoal.mutate(data)}
+          updateError={updateError}
         />
       );
     }
     return () => closePanel();
-  }, [goal]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [goal, updateError]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) return <PageSkeleton variant="detail" />;
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
