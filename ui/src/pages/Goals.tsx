@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { goalsApi } from "../api/goals";
 import { useCompany } from "../context/CompanyContext";
@@ -9,7 +10,7 @@ import { GoalTree } from "../components/GoalTree";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Button } from "@/components/ui/button";
-import { Target, Plus } from "lucide-react";
+import { Target, Plus, AlertTriangle } from "lucide-react";
 
 export function Goals() {
   const { selectedCompanyId } = useCompany();
@@ -34,9 +35,30 @@ export function Goals() {
     return <PageSkeleton variant="list" />;
   }
 
+  const activeRootCompanyGoals = (goals ?? []).filter(
+    (g) => g.level === "company" && g.status === "active" && g.parentId === null,
+  );
+  const hasActiveRootConflict = activeRootCompanyGoals.length > 1;
+
   return (
     <div className="space-y-4">
       {error && <p className="text-sm text-destructive">{error.message}</p>}
+
+      {hasActiveRootConflict && (
+        <div className="flex items-start gap-2 p-3 rounded-md border border-yellow-500/30 bg-yellow-500/10 text-sm">
+          <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-medium">Multiple active root company goals detected.</span>
+            {" "}Only one active root company goal is allowed.{" "}
+            {activeRootCompanyGoals.map((g, i) => (
+              <span key={g.id}>
+                {i > 0 && ", "}
+                <Link to={`/goals/${g.id}`} className="underline hover:opacity-80">{g.title}</Link>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {goals && goals.length === 0 && (
         <EmptyState

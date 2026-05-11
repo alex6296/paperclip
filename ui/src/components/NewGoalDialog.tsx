@@ -1,10 +1,12 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { GOAL_STATUSES, GOAL_LEVELS } from "@paperclipai/shared";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { goalsApi } from "../api/goals";
+import { agentsApi } from "../api/agents";
 import { assetsApi } from "../api/assets";
+import { ApiError } from "../api/client";
 import { queryKeys } from "../lib/queryKeys";
 import {
   Dialog,
@@ -21,6 +23,7 @@ import {
   Minimize2,
   Target,
   Layers,
+  User,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { MarkdownEditor, type MarkdownEditorRef } from "./MarkdownEditor";
@@ -33,6 +36,25 @@ const levelLabels: Record<string, string> = {
   task: "Task",
 };
 
+const ALLOWED_PARENT_LEVEL: Record<string, string | null> = {
+  company: null,
+  team: "company",
+  agent: "team",
+  task: "agent",
+};
+
+const CHILD_LEVEL_FOR: Record<string, string> = {
+  company: "team",
+  team: "agent",
+  agent: "task",
+};
+
+type GoalViolation = {
+  code: string;
+  field: "level" | "parentId" | "ownerAgentId" | "status";
+  message: string;
+};
+
 export function NewGoalDialog() {
   const { newGoalOpen, newGoalDefaults, closeNewGoal } = useDialog();
   const { selectedCompanyId, selectedCompany } = useCompany();
@@ -40,16 +62,20 @@ export function NewGoalDialog() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
-  const [level, setLevel] = useState("task");
+  const [level, setLevel] = useState("company");
   const [parentId, setParentId] = useState("");
+  const [ownerAgentId, setOwnerAgentId] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [levelInitialized, setLevelInitialized] = useState(false);
+  const [topLevelError, setTopLevelError] = useState("");
+  const [violations, setViolations] = useState<GoalViolation[]>([]);
 
   const [statusOpen, setStatusOpen] = useState(false);
   const [levelOpen, setLevelOpen] = useState(false);
   const [parentOpen, setParentOpen] = useState(false);
+  const [ownerOpen, setOwnerOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
 
-  // Apply defaults when dialog opens
   const appliedParentId = parentId || newGoalDefaults.parentId || "";
 
   const { data: goals } = useQuery({
@@ -58,6 +84,26 @@ export function NewGoalDialog() {
     enabled: !!selectedCompanyId && newGoalOpen,
   });
 
+  const { data: agents } = useQuery({
+    queryKey: queryKeys.agents.list(selectedCompanyId!),
+    queryFn: () => agentsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId && newGoalOpen,
+  });
+
+  // Initialize level from parent's level when dialog opens
+  useEffect(() => {
+    if (!newGoalOpen || levelInitialized) return;
+    if (newGoalDefaults.parentId && !goals) return; // wait for goals to load
+
+    if (newGoalDefaults.parentId) {
+      const parent = (goals ?? []).find((g) => g.id === newGoalDefaults.parentId);
+      setLevel(parent ? (CHILD_LEVEL_FOR[parent.level] ?? "company") : "company");
+    } else {
+      setLevel("company");
+    }
+    setLevelInitialized(true);
+  }, [newGoalOpen, levelInitialized, goals, newGoalDefaults.parentId]);
+
   const createGoal = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       goalsApi.create(selectedCompanyId!, data),
@@ -65,6 +111,19 @@ export function NewGoalDialog() {
       queryClient.invalidateQueries({ queryKey: queryKeys.goals.list(selectedCompanyId!) });
       reset();
       closeNewGoal();
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 422) {
+        const body = err.body as {
+          error?: string;
+          details?: { violations?: GoalViolation[] };
+        } | null;
+        setTopLevelError(body?.error ?? "Validation failed");
+        setViolations(body?.details?.violations ?? []);
+      } else {
+        setTopLevelError((err as Error).message ?? "Failed to create goal");
+        setViolations([]);
+      }
     },
   });
 
@@ -79,19 +138,26 @@ export function NewGoalDialog() {
     setTitle("");
     setDescription("");
     setStatus("planned");
-    setLevel("task");
+    setLevel("company");
     setParentId("");
+    setOwnerAgentId("");
     setExpanded(false);
+    setLevelInitialized(false);
+    setTopLevelError("");
+    setViolations([]);
   }
 
   function handleSubmit() {
     if (!selectedCompanyId || !title.trim()) return;
+    setTopLevelError("");
+    setViolations([]);
     createGoal.mutate({
       title: title.trim(),
       description: description.trim() || undefined,
       status,
       level,
       ...(appliedParentId ? { parentId: appliedParentId } : {}),
+      ...(ownerAgentId ? { ownerAgentId } : {}),
     });
   }
 
@@ -103,6 +169,15 @@ export function NewGoalDialog() {
   }
 
   const currentParent = (goals ?? []).find((g) => g.id === appliedParentId);
+  const currentOwner = (agents ?? []).find((a) => a.id === ownerAgentId);
+
+  const allowedParentLevel = ALLOWED_PARENT_LEVEL[level];
+  const filteredParentOptions = allowedParentLevel
+    ? (goals ?? []).filter((g) => g.level === allowedParentLevel)
+    : [];
+
+  const ownerRequired = level === "team" || level === "agent";
+  const fieldViolations = (field: string) => violations.filter((v) => v.field === field);
 
   return (
     <Dialog
@@ -183,6 +258,13 @@ export function NewGoalDialog() {
           />
         </div>
 
+        {/* Top-level 422 error */}
+        {topLevelError && (
+          <div className="px-4 py-1 text-xs text-destructive border-t border-destructive/20 bg-destructive/5">
+            {topLevelError}
+          </div>
+        )}
+
         {/* Property chips */}
         <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap">
           {/* Status */}
@@ -211,7 +293,10 @@ export function NewGoalDialog() {
           {/* Level */}
           <Popover open={levelOpen} onOpenChange={setLevelOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
+              <button className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs hover:bg-accent/50 transition-colors",
+                fieldViolations("level").length > 0 ? "border-destructive" : "border-border",
+              )}>
                 <Layers className="h-3 w-3 text-muted-foreground" />
                 {levelLabels[level] ?? level}
               </button>
@@ -224,53 +309,123 @@ export function NewGoalDialog() {
                     "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
                     l === level && "bg-accent"
                   )}
-                  onClick={() => { setLevel(l); setLevelOpen(false); }}
+                  onClick={() => {
+                    setLevel(l);
+                    setLevelOpen(false);
+                    // Clear parent when it's no longer valid for the new level
+                    const newAllowedParent = ALLOWED_PARENT_LEVEL[l];
+                    if (appliedParentId) {
+                      const parent = (goals ?? []).find((g) => g.id === appliedParentId);
+                      if (parent && parent.level !== newAllowedParent) {
+                        setParentId("");
+                      }
+                    }
+                  }}
                 >
                   {levelLabels[l] ?? l}
                 </button>
               ))}
             </PopoverContent>
           </Popover>
+          {fieldViolations("level").map((v) => (
+            <span key={v.code} className="text-xs text-destructive">{v.message}</span>
+          ))}
 
-          {/* Parent goal */}
-          <Popover open={parentOpen} onOpenChange={setParentOpen}>
-            <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
-                <Target className="h-3 w-3 text-muted-foreground" />
-                {currentParent ? currentParent.title : "Parent goal"}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-48 p-1" align="start">
-              <button
-                className={cn(
-                  "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                  !appliedParentId && "bg-accent"
-                )}
-                onClick={() => { setParentId(""); setParentOpen(false); }}
-              >
-                No parent
-              </button>
-              {(goals ?? []).map((g) => (
-                <button
-                  key={g.id}
-                  className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 truncate",
-                    g.id === appliedParentId && "bg-accent"
-                  )}
-                  onClick={() => { setParentId(g.id); setParentOpen(false); }}
-                >
-                  {g.title}
+          {/* Parent goal — hidden for company level (no parent allowed) */}
+          {level !== "company" && (
+            <Popover open={parentOpen} onOpenChange={setParentOpen}>
+              <PopoverTrigger asChild>
+                <button className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs hover:bg-accent/50 transition-colors",
+                  fieldViolations("parentId").length > 0 ? "border-destructive" : "border-border",
+                )}>
+                  <Target className="h-3 w-3 text-muted-foreground" />
+                  {currentParent
+                    ? currentParent.title
+                    : `Parent ${allowedParentLevel ? `(${levelLabels[allowedParentLevel]} goal)` : "goal"}`}
                 </button>
-              ))}
-            </PopoverContent>
-          </Popover>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-1" align="start">
+                <button
+                  className={cn(
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                    !appliedParentId && "bg-accent"
+                  )}
+                  onClick={() => { setParentId(""); setParentOpen(false); }}
+                >
+                  No parent
+                </button>
+                {filteredParentOptions.length === 0 && (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                    No {allowedParentLevel} goals available
+                  </p>
+                )}
+                {filteredParentOptions.map((g) => (
+                  <button
+                    key={g.id}
+                    className={cn(
+                      "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 truncate",
+                      g.id === appliedParentId && "bg-accent"
+                    )}
+                    onClick={() => { setParentId(g.id); setParentOpen(false); }}
+                  >
+                    {g.title}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+          )}
+          {fieldViolations("parentId").map((v) => (
+            <span key={v.code} className="text-xs text-destructive">{v.message}</span>
+          ))}
+
+          {/* Owner — shown for team and agent levels */}
+          {ownerRequired && (
+            <Popover open={ownerOpen} onOpenChange={setOwnerOpen}>
+              <PopoverTrigger asChild>
+                <button className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs hover:bg-accent/50 transition-colors",
+                  fieldViolations("ownerAgentId").length > 0 ? "border-destructive" : "border-border",
+                )}>
+                  <User className="h-3 w-3 text-muted-foreground" />
+                  {currentOwner ? currentOwner.name : "Owner (required)"}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-1" align="start">
+                <button
+                  className={cn(
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
+                    !ownerAgentId && "bg-accent"
+                  )}
+                  onClick={() => { setOwnerAgentId(""); setOwnerOpen(false); }}
+                >
+                  No owner
+                </button>
+                {(agents ?? []).map((a) => (
+                  <button
+                    key={a.id}
+                    className={cn(
+                      "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 truncate",
+                      a.id === ownerAgentId && "bg-accent"
+                    )}
+                    onClick={() => { setOwnerAgentId(a.id); setOwnerOpen(false); }}
+                  >
+                    {a.name}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+          )}
+          {fieldViolations("ownerAgentId").map((v) => (
+            <span key={v.code} className="text-xs text-destructive">{v.message}</span>
+          ))}
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-end px-4 py-2.5 border-t border-border">
           <Button
             size="sm"
-            disabled={!title.trim() || createGoal.isPending}
+            disabled={!title.trim() || createGoal.isPending || (ownerRequired && !ownerAgentId)}
             onClick={handleSubmit}
           >
             {createGoal.isPending ? "Creating…" : newGoalDefaults.parentId ? "Create sub-goal" : "Create goal"}
