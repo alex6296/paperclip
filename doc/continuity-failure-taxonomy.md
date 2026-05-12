@@ -194,6 +194,7 @@ COO should directly handle:
 - missing routing guidance
 - heartbeat or ownership playbook gaps
 - small operational artifact fixes around continuity reporting
+- continuity-parent cleanup when a parent is waiting on child execution or environment recovery but is still sitting in a fake active state
 
 ### Delegate to Agent Developer
 
@@ -203,6 +204,7 @@ Delegate when the failure indicates deeper implementation work:
 - workspace/session restore defects
 - plugin loader/runtime-service breakage
 - repeated recovery-loop failures without a doc-only fix
+- environment/bootstrap/test-environment repair that needs real tooling or runtime implementation beyond a bounded routing fix
 
 ### Escalate to CEO
 
@@ -220,6 +222,13 @@ Route out of COO scope when the root cause is not Paperclip-internal operations:
 - product repository bugs
 - application feature regressions
 - product-side deployment/debugging work
+
+### Release-boundary rule
+
+Do not route environment/bootstrap/test-environment recovery to Deployer unless there is a real release handoff artifact to ship or verify.
+
+- If the problem is restoring execution, provisioning a workspace, repairing local runtime prerequisites, or re-establishing a test environment, keep ownership with the continuity owner or a named infra/runtime owner.
+- Deployer becomes the owner only when the issue has crossed into release stewardship: branch/commit evidence, rollout notes, deploy config, or another concrete rollout artifact.
 
 ## 7. Files to update in rollout
 

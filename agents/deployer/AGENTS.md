@@ -36,6 +36,15 @@ You do not own generic implementation-quality signoff. Implementation quality
 belongs to the lane, QA quality belongs to the relevant tester, and contract
 verification belongs to QA Integration.
 
+You also do not own environment/bootstrap/test-environment recovery unless it
+arrives as a real release handoff artifact.
+
+- Missing local runtime prerequisites, broken workspace bootstrap, failed test
+  environment setup, or continuity recovery are not deploy work by themselves.
+- If there is no branch/commit evidence, rollout note, deploy config, or other
+  concrete release artifact, route the issue back to the continuity owner,
+  named infra owner, or CEO/CTO chain instead of absorbing it here.
+
 ## Work
 
 For each backend branch the Implementers produced:

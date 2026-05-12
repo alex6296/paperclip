@@ -13,9 +13,17 @@ import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 
+const HIERARCHY_GUIDANCE: Record<string, string> = {
+  company: "No parent. Only one active root company goal is allowed at a time.",
+  team: "Requires a company goal as parent and an owner agent.",
+  agent: "Requires a team goal as parent and an owner agent.",
+  task: "Requires an agent goal as parent.",
+};
+
 interface GoalPropertiesProps {
   goal: Goal;
   onUpdate?: (data: Record<string, unknown>) => void;
+  updateError?: string | null;
 }
 
 function PropertyRow({ label, children }: { label: string; children: React.ReactNode }) {
@@ -70,7 +78,7 @@ function PickerButton({
   );
 }
 
-export function GoalProperties({ goal, onUpdate }: GoalPropertiesProps) {
+export function GoalProperties({ goal, onUpdate, updateError }: GoalPropertiesProps) {
   const { selectedCompanyId } = useCompany();
 
   const { data: agents } = useQuery({
@@ -92,6 +100,8 @@ export function GoalProperties({ goal, onUpdate }: GoalPropertiesProps) {
   const parentGoal = goal.parentId
     ? allGoals?.find((g) => g.id === goal.parentId)
     : null;
+
+  const guidance = HIERARCHY_GUIDANCE[goal.level];
 
   return (
     <div className="space-y-4">
@@ -124,6 +134,10 @@ export function GoalProperties({ goal, onUpdate }: GoalPropertiesProps) {
           )}
         </PropertyRow>
 
+        {updateError && (
+          <div className="py-1 text-xs text-destructive">{updateError}</div>
+        )}
+
         <PropertyRow label="Owner">
           {ownerAgent ? (
             <Link
@@ -138,7 +152,7 @@ export function GoalProperties({ goal, onUpdate }: GoalPropertiesProps) {
         </PropertyRow>
 
         {goal.parentId && (
-          <PropertyRow label="Parent Goal">
+          <PropertyRow label="Parent">
             <Link
               to={`/goals/${goal.parentId}`}
               className="text-sm hover:underline"
@@ -148,6 +162,15 @@ export function GoalProperties({ goal, onUpdate }: GoalPropertiesProps) {
           </PropertyRow>
         )}
       </div>
+
+      {guidance && (
+        <>
+          <Separator />
+          <div className="text-xs text-muted-foreground leading-relaxed">
+            <span className="font-medium capitalize">{goal.level} goal:</span> {guidance}
+          </div>
+        </>
+      )}
 
       <Separator />
 
