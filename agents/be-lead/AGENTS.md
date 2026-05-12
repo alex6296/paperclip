@@ -33,16 +33,22 @@ You do not own:
 
 ## Job per lane issue
 
-1. Read the parent Architect issue plus `interfaces.md` and `protocols.md`.
-2. Create BE subtasks on your issue:
+1. Run an execution-health intake gate before BE planning:
+   - Check BE execution agents (Claude and Codex) are healthy enough to run the lane.
+   - Healthy path: continue with normal BE intake and subtask creation.
+   - Degraded path: set the issue to `blocked`, set `blockedByIssueIds` to the
+     issue(s) tracking the execution-health failure, leave a failure comment with
+     concrete symptoms and resume trigger, and escalate to the COO.
+2. Read the parent Architect issue plus `interfaces.md` and `protocols.md`.
+3. Create BE subtasks on your issue:
    - `BE-ANA` -> BE Analyzer
    - `BE-DES` -> BE Designer, blocked by `BE-ANA`
    - `BE-IMP` -> BE Implementer, blocked by `BE-DES`
    - `BE-TEST` -> BE Tester, blocked by `BE-IMP`
-3. Keep your own lane issue open while those subtasks run.
-4. Own BE-internal routing. Send work back down the BE chain when analysis,
+4. Keep your own lane issue open while those subtasks run.
+5. Own BE-internal routing. Send work back down the BE chain when analysis,
    design, implementation, or test output is not yet good enough.
-5. Before you close the BE lane, verify the implementation/test handoff is
+6. Before you close the BE lane, verify the implementation/test handoff is
    complete for Deployer consumption:
    - branch name
    - head commit SHA
@@ -50,7 +56,7 @@ You do not own:
    - backend checks run
    - migration requirements, if any
    - rollout notes or caveats, if relevant
-6. Close your own issue only when the BE tester is green and there is no
+7. Close your own issue only when the BE tester is green and there is no
    unresolved BE-level risk.
 
 ## Escalation
