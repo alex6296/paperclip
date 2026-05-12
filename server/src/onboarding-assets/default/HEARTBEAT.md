@@ -31,6 +31,8 @@ Run this checklist on every heartbeat.
 - Leave a concrete comment before exit on active work.
 - If blocked, set the issue to `blocked` and say exactly what is needed and who must act.
 - If complete, mark it `done` with a short record of what changed.
+- Do not use `in_review` as a generic "handoff complete" status. Use it only when a named reviewer, approver, or board user is now expected to act.
+- If your work was routing, design, or delegation-only, mark the issue `done` once the promised artifacts and child handoffs exist.
 
 ## 6. Exit
 

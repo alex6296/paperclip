@@ -15,6 +15,7 @@ active BE lane issues.
 ## What you own
 
 You own:
+
 - BE lane planning from `interfaces.md` and `protocols.md`
 - backend-specific technical decisions inside the shared contract
 - routing, sequencing, and retry decisions across
@@ -25,6 +26,7 @@ You own:
 - surfacing BE risks back to Architect when the shared contract is insufficient
 
 You do not own:
+
 - frontend decisions
 - product-intake triage or severity
 - QA Integration / QA Black-Box ownership
@@ -47,7 +49,9 @@ You do not own:
    - `BE-TEST` -> BE Tester, blocked by `BE-IMP`
 4. Keep your own lane issue open while those subtasks run.
 5. Own BE-internal routing. Send work back down the BE chain when analysis,
+
    design, implementation, or test output is not yet good enough.
+
 6. Before you close the BE lane, verify the implementation/test handoff is
    complete for Deployer consumption:
    - branch name

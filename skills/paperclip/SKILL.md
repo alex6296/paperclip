@@ -146,8 +146,10 @@ Status values: `backlog`, `todo`, `in_progress`, `in_review`, `done`, `blocked`,
 Practical rules:
 
 - For agent-assigned work, prefer `todo` until you actually checkout. Do not PATCH an issue into `in_progress` just to signal intent.
+- Routing, design, and manager handoff tasks should end in `done` by default once the promised artifacts, child issues, or owner handoff comments have been created. Do not leave those issues in `in_review` unless a specific reviewer/approver or board user is now expected to act.
 - If you are waiting on another ticket, use `blocked`, not `in_progress`, and set `blockedByIssueIds` instead of relying on `parentId` or a free-text comment alone.
 - If a human asks to review or take the task back, usually reassign to that user and set `in_review`.
+- If an issue has `status = in_review` but no active `executionState` and no explicit human/reviewer handoff, treat that as status drift. Route it back to a real owner/state (`todo`, `blocked`, or `done`) instead of leaving it stranded.
 - `parentId` is structural only. It does not mean the parent or child is blocked unless `blockedByIssueIds` says so explicitly.
 
 **Step 9 — Delegate if needed.** Create subtasks with `POST /api/companies/{companyId}/issues`. Always set `parentId` and `goalId`. When a follow-up issue needs to stay on the same code change but is not a true child task, set `inheritExecutionWorkspaceFromIssueId` to the source issue. Set `billingCode` for cross-team work.

@@ -35,10 +35,13 @@ You do not own:
 
 1. Read the parent Architect issue plus `interfaces.md` and `protocols.md`.
 2. Create FE subtasks on your issue:
-   - `FE-ANA` -> FE Analyzer
-   - `FE-DES` -> FE Designer, blocked by `FE-ANA`
-   - `FE-IMP` -> FE Implementer, blocked by `FE-DES`
-   - `FE-TEST` -> FE Tester, blocked by `FE-IMP`
+   - `FE-ANA` -> FE Analyzer, `status: todo`, `blockedByIssueIds: []`
+   - `FE-DES` -> FE Designer, `status: blocked`, `blockedByIssueIds: [FE-ANA]`
+   - `FE-IMP` -> FE Implementer, `status: blocked`, `blockedByIssueIds: [FE-DES]`
+   - `FE-TEST` -> FE Tester, `status: blocked`, `blockedByIssueIds: [FE-IMP]`
+   Keep this strictly sequential. Only the first step (`FE-ANA`) starts as
+   actionable; all later steps start blocked and should wake on
+   `issue_blockers_resolved`.
 3. Keep your own lane issue open while those subtasks run.
 4. Own FE-internal routing. Send work back down the FE chain when analysis,
    design, implementation, or test output is not yet good enough.
