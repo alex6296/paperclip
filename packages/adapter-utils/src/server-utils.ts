@@ -773,6 +773,42 @@ export async function ensureAbsoluteDirectory(
   }
 }
 
+async function resolveForBoundaryCheck(candidate: string): Promise<string> {
+  const resolved = path.resolve(candidate);
+  try {
+    return await fs.realpath(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+function isPathWithinBoundary(candidate: string, boundary: string): boolean {
+  const relative = path.relative(boundary, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+export async function ensureWorkspaceBoundaryCwd(
+  cwd: string,
+  workspaceCwd: string | null | undefined,
+  opts: { source?: string | null } = {},
+) {
+  const boundaryRaw = typeof workspaceCwd === "string" ? workspaceCwd.trim() : "";
+  if (!boundaryRaw) return;
+
+  const [resolvedCandidate, resolvedBoundary] = await Promise.all([
+    resolveForBoundaryCheck(cwd),
+    resolveForBoundaryCheck(boundaryRaw),
+  ]);
+
+  if (isPathWithinBoundary(resolvedCandidate, resolvedBoundary)) return;
+
+  const source = typeof opts.source === "string" && opts.source.trim().length > 0 ? opts.source.trim() : null;
+  const sourceHint = source ? ` (workspace source: ${source})` : "";
+  throw new Error(
+    `Working directory "${cwd}" is outside workspace boundary "${boundaryRaw}"${sourceHint}.`,
+  );
+}
+
 export async function resolvePaperclipSkillsDir(
   moduleDir: string,
   additionalCandidates: string[] = [],

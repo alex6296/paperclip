@@ -15,6 +15,7 @@ import {
   joinPromptSections,
   buildInvocationEnvForLogs,
   ensureAbsoluteDirectory,
+  ensureWorkspaceBoundaryCwd,
   ensureCommandResolvable,
   ensurePathInEnv,
   readInstructionsBundle,
@@ -129,6 +130,7 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
   const effectiveWorkspaceCwd = useConfiguredInsteadOfAgentHome ? "" : workspaceCwd;
   const cwd = effectiveWorkspaceCwd || configuredCwd || process.cwd();
   await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
+  await ensureWorkspaceBoundaryCwd(cwd, effectiveWorkspaceCwd, { source: workspaceSource });
 
   const envConfig = parseObject(config.env);
   const hasExplicitApiKey =

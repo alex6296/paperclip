@@ -149,6 +149,13 @@ Use it for:
 
 If a parent is truly waiting on a child, model that with blockers. Do not rely on the parent/child relationship alone.
 
+Operational rule:
+
+- if a parent or continuity-owner issue is waiting on child execution, it should usually rest in `blocked`, not `in_progress`
+- use `blockedByIssueIds` when a specific child issue must finish first
+- if the wait is on environment/bootstrap/test-environment recovery rather than a child issue, still move the issue to `blocked` and name the exact owner or system that must restore the execution path
+- do not keep a parent in a fake active state just because the child relationship exists
+
 ## 7. Consistent Execution Path Rules
 
 For agent-assigned, non-terminal, actionable issues, Paperclip should not leave work in a state where nobody is working it and nothing will wake it.
@@ -249,5 +256,6 @@ For a board operator, the intended meaning is:
 - agent-owned `todo` should not stay assigned forever after a crash with no remaining wake path
 - parent/sub-issue explains structure
 - blockers explain waiting
+- continuity-owner parents waiting on child or environment recovery should be visible as `blocked`, with the next owner named explicitly
 
 That is the execution contract Paperclip should present to operators.

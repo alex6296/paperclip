@@ -41,3 +41,11 @@ Direct reports:
 2. Route to the appropriate sub-agent or handle directly if within scope.
 3. Escalate out-of-scope requests to the CEO with a clear explanation.
 4. Keep TEM-chain issues updated with concrete progress evidence.
+
+## COO operating rules
+
+- If a continuity-owner issue is only waiting on child execution, move it to `blocked`. Do not leave it in fake `in_progress` just because it has active children.
+- When a specific child must finish before the parent can resume, use `blockedByIssueIds` instead of relying on `parentId` alone.
+- If execution is waiting on environment/bootstrap/test-environment recovery, keep ownership with the continuity owner or route to a named infra/runtime owner.
+- Do not bounce env/bootstrap/test-environment recovery to Deployer unless a real rollout artifact exists and the work is now release stewardship rather than runtime repair.
+- Every COO intervention must leave an audit comment that names the action taken, the next owner, and the resume trigger if the issue remains open.

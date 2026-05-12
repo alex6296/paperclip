@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { readInstructionsBundle, runChildProcess } from "./server-utils.js";
+import {
+  ensureWorkspaceBoundaryCwd,
+  readInstructionsBundle,
+  runChildProcess,
+} from "./server-utils.js";
 
 function isPidAlive(pid: number) {
   try {
@@ -148,6 +152,46 @@ describe("runChildProcess", () => {
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe("ensureWorkspaceBoundaryCwd", () => {
+  it("allows cwd inside workspace boundary", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-workspace-boundary-pass-"));
+    const workspace = path.join(root, "workspace");
+    const child = path.join(workspace, "packages", "server");
+    await fs.mkdir(child, { recursive: true });
+
+    await expect(ensureWorkspaceBoundaryCwd(child, workspace)).resolves.toBeUndefined();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("rejects cwd outside workspace boundary", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-workspace-boundary-fail-"));
+    const workspace = path.join(root, "workspace");
+    const outside = path.join(root, "outside");
+    await fs.mkdir(workspace, { recursive: true });
+    await fs.mkdir(outside, { recursive: true });
+
+    await expect(ensureWorkspaceBoundaryCwd(outside, workspace)).rejects.toThrow(
+      /outside workspace boundary/i,
+    );
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("rejects symlink paths that resolve outside workspace boundary", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-workspace-boundary-symlink-"));
+    const workspace = path.join(root, "workspace");
+    const outside = path.join(root, "outside");
+    const escapeLink = path.join(workspace, "escape");
+    await fs.mkdir(workspace, { recursive: true });
+    await fs.mkdir(outside, { recursive: true });
+    await fs.symlink(outside, escapeLink, "junction");
+
+    await expect(ensureWorkspaceBoundaryCwd(escapeLink, workspace)).rejects.toThrow(
+      /outside workspace boundary/i,
+    );
+    await fs.rm(root, { recursive: true, force: true });
   });
 });
 
